@@ -80,7 +80,8 @@ Rebuilt the MOGA objective design and torsion encoding. Validated on the full
 |---|---|---|---|---|---|---|
 | original 4-obj (VDW, torsion, RMSD, -Rg) | 1.044 Å | 0.697 Å | 63.8% | 88.1% | 22.6 | 200 s |
 | v1 3-obj (confEnergy, RMSD, -Rg) | 0.814 Å | 0.545 Å | 72.3% | 93.0% | 25.2 | 223 s |
-| **v2 3-obj + dual archive — default** | **0.732 Å** | **0.536 Å** | **74.8%** | **94.5%** | 31.6 | 417 s |
+| v2 3-obj + dual archive | 0.732 Å | 0.536 Å | 74.8% | 94.5% | 31.6 | 417 s |
+| **v2 + tuned defaults — current** | **0.638 Å** | **0.457 Å** | **80.5%** | **97.0%** | 56.1 | 1065 s |
 
 - **v1: 22% lower mean min-RMSD** vs original; improved on 164 molecules,
   regressed on 71, equal on 94. The largest gains are on flexible ligands
@@ -91,6 +92,12 @@ Rebuilt the MOGA objective design and torsion encoding. Validated on the full
   1ian 2.1→1.1 Å). Runtime roughly doubles (the diversity archive roughly
   doubles the archive size; tuning `MOGA_Population_Size`/`MOGA_Max_Generation`
   can trade accuracy for speed).
+- **Tuned defaults: further 13% lower** (0.732→0.638 Å) via a parameter sweep
+  on a 20-molecule subset: 300 generations (vs 100) and mutation 0.2 (vs 0.1)
+  gave the largest gains; a finer ε grid (2 0.2 0.1 2 vs 3 0.3 0.1 2) helped
+  further; 500 generations gave no additional gain. ≤1.0 Å success rate
+  74.8%→80.5%, ≤2.0 Å 94.5%→97.0%. Runtime ~1065 s for the full set (more
+  conformers kept: 56.1/mol on average).
 - All runs: 329/329 molecules processed, 0 failures, fixed seed 0.42.
 
 Changes:
@@ -116,8 +123,13 @@ Changes:
 - **Fixed polynomial mutation bugs**: `int val = ...` truncated the mutation
   step to 0/1 (destroying the distribution); the random redraw also assigned
   `randomperc()` ∈ [0,1) to an `int`, always yielding 0.
-- Tuned defaults: `MOGA_Num_Objectives 3`, `MOGA_Epsilon_Quaternion 3 0.3 0.1 2`,
-  `MOGA_Energy_Cutoff 60` (see `Cyndi/CyndiParam.in`).
+- Tuned defaults: `MOGA_Num_Objectives 3`,
+  `MOGA_Max_Generation 300`, `MOGA_Mutation_Probability 0.2`,
+  `MOGA_Epsilon_Quaternion 2 0.2 0.1 2`, `MOGA_Energy_Cutoff 60`
+  (see `Cyndi/CyndiParam.in`). Tuning sweep on a 20-molecule subset:
+  300 generations and higher mutation (0.2) cut mean min-RMSD 0.668→0.477 Å
+  (−29%); a finer ε grid (2, 0.2) helped further; 500 generations gave no
+  additional gain.
 - Benchmark harness: `bench/runner.py`, `bench/analyze.py`, full per-molecule
   results in `bench/analysis_new.txt` / `bench/analysis_old.txt`.
 

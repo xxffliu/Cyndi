@@ -53,7 +53,7 @@ MOGA_Max_Run\t\t%i\n\
 MOGA_Crossover_Probability\t\t%f\n\
 MOGA_Mutation_Probability\t\t%f\n\
 MOGA_SBX\t\t15 20\n\
-MOGA_Epsilon_Quaternion\t\t 3 0.3 0.1 2\n\
+MOGA_Epsilon_Quaternion\t\t 2 0.2 0.1 2\n\
 MOGA_Keep_Input_Conformer[Y/N]\t\t%s\n\
 MOGA_Optimize_Conformer[Y/N]\t\t%s\n\
 MOGA_Energy_Cutoff\t\t%i\n\
