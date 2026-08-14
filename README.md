@@ -72,4 +72,4 @@ build.sh        MinGW build script
 
 ## License
 
-Academic use. Contact the authors for commercial licensing.
+Released under the [MIT License](LICENSE).
