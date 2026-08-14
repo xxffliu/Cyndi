@@ -71,6 +71,15 @@ bool ReadParameter(string name)
 				MOGAParam_.EPSILON_[2] = str2double(fields[1]);
 			else if(fields[0] == "MOGA_Gyration_Radius_Epsilon")
 				MOGAParam_.EPSILON_[3] = str2double(fields[1]);
+			// v1 (2026): the parameter files use a single line with all 4 grid
+			// sizes (MOGA_Epsilon_Quaternion v0 v1 v2 v3), but the parser only
+			// handled the four separate keys above -- so EPSILON_ stayed 0 and
+			// the file value was silently ignored. Parse the quaternion line.
+			else if(fields[0] == "MOGA_Epsilon_Quaternion")
+			{
+				for(size_t k = 1; k < fields.size() && k <= 4; k++)
+					MOGAParam_.EPSILON_[k-1] = str2double(fields[k]);
+			}
 
 			else if(fields[0] == "MOGA_Keep_Input_Conformer[Y/N]")
 

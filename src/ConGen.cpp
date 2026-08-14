@@ -17,8 +17,10 @@ individual& individual::operator =(const individual &rhs)
 }
 MOGA::MOGA():archive_size(0), taff_()
 {
-	taff_.remove_component("TAFF ELE");
-	mmff94_.remove_component("MMFF94 ELE");
+	// v1 (2026): keep the electrostatic component enabled so the search
+	// objective includes full MMFF94/TAFF energy (H-bonds & charge distribution).
+	// Originally commented out: taff_.remove_component("TAFF ELE");
+	// Originally commented out: mmff94_.remove_component("MMFF94 ELE");
 	for(int i = 0; i < 4; i++)
 	{
 		if(isNearZero(MOGAParam_.EPSILON_[i]))
@@ -27,8 +29,7 @@ MOGA::MOGA():archive_size(0), taff_()
 }
 MOGA::MOGA(const MOL& mol):archive_size(0),taff_()
 {
-	taff_.remove_component("TAFF ELE");
-	mmff94_.remove_component("MMFF94 ELE");
+	// v1 (2026): electrostatics enabled during search (see note in ctor above)
 	for(int i = 0; i < 4; i++)
 	{
 		if(isNearZero(MOGAParam_.EPSILON_[i]))
@@ -177,43 +178,52 @@ void MOGA::objective(individual* indv)
 	{
 		mol_.apply_rotor(i, torsionStep * indv->xreal[i]);
 	}
-	double vdwEnergy(0.), torsionEnergy(0.);
+	double vdwEnergy(0.), torsionEnergy(0.), eleEnergy(0.);
 	if(MOGAParam_.FFType_ == FF_TAFF)
 	{
 		indv->energy = taff_.update_energy();
 		vdwEnergy = taff_.get_vdw_energy();
 		torsionEnergy = taff_.get_torsion_energy();
+		eleEnergy = taff_.get_ele_energy();
 	}
 	else
 	{
 		indv->energy = mmff94_.update_energy();
 		vdwEnergy = mmff94_.get_vdw_energy();
 		torsionEnergy = mmff94_.get_torsion_energy();
+		eleEnergy = mmff94_.get_ele_energy();
 	}
 	indv->gyration_radius = mol_.ComputGyrationRadius();
 
-
+	// v1 (2026) objective design:
+	//   f0 = conformation-dependent energy (torsion + vdw + ele). The full FF
+	//       energy also contains stretch/bend/oop terms that are CONSTANT under
+	//       dihedral rotation; including them flattens the Pareto front into a
+	//       single epsilon box. Keep only terms that respond to torsion changes.
+	//   f1 = aligned RMSD vs. input conformer -- diversity
+	//   f2 = -gyration radius (optional) -- molecular extension
+	//   f3 = -electrostatic energy (optional) -- polar/H-bond complement
+	double confEnergy = torsionEnergy + vdwEnergy + eleEnergy;
 	// 2 objectives
 	if(MOGAParam_.NumObjects_ == 2)
 	{
-		indv->f[0] = vdwEnergy;
-		indv->f[1] = torsionEnergy;
+		indv->f[0] = confEnergy;
+		indv->f[1] = mol_.minimizeRMSD();
 	}
 	// 3 objectives
-	if(MOGAParam_.NumObjects_ == 3)
+	else if(MOGAParam_.NumObjects_ == 3)
 	{
-		indv->f[0] = vdwEnergy;
-		indv->f[1] = torsionEnergy;
-		indv->f[2] = mol_.minimizeRMSD();
+		indv->f[0] = confEnergy;
+		indv->f[1] = mol_.minimizeRMSD();
+		indv->f[2] = -mol_.ComputGyrationRadius();
 	}
 	// 4 objectives
 	else if(MOGAParam_.NumObjects_ == 4)
 	{
-		indv->f[0] = vdwEnergy;
-		indv->f[1] = torsionEnergy;
-		indv->f[2] = mol_.minimizeRMSD();
-		indv->f[3] = -mol_.ComputGyrationRadius();
-		//cout<<vdwEnergy<<" "<<torsionEnergy<<" "<<indv->f[2]<<" "<<indv->f[3]<<endl;
+		indv->f[0] = confEnergy;
+		indv->f[1] = mol_.minimizeRMSD();
+		indv->f[2] = -mol_.ComputGyrationRadius();
+		indv->f[3] = -eleEnergy;
 	}
 	mol_.reset();
 	return ;
@@ -235,6 +245,19 @@ void MOGA::create_random_pop ()
 }
 
 /*This is the file used for crossover for Real Coded GA*/
+// v1 (2026): torsions are periodic variables. A value maps to a dihedral angle
+// via xreal*2.5 deg; the domain [infimumx, supremumx] spans exactly one full
+// turn (144 steps x 2.5 deg = 360 deg). wrap_torsion maps any integer back into
+// the canonical domain along the circle (shortest-arc equivalent).
+inline int wrap_torsion(int v)
+{
+	const int period = supremumx - infimumx + 1;   // 144
+	int r = (v - infimumx) % period;
+	if (r < 0)
+		r += period;
+	return infimumx + r;
+}
+
 void MOGA::realcross(individual parent1, individual parent2)
 {
 	float betaq(0.), beta(0.), alpha(0.),expp(0.);
@@ -256,6 +279,20 @@ void MOGA::realcross(individual parent1, individual parent2)
 			/*Variable selected */
 			//ncross++;
 
+			// v1 (2026): map par2 onto the shortest arc around par1 so that
+			// crossover respects the periodicity of the dihedral variable
+			// (e.g. 170 deg and -170 deg are only 20 deg apart on the circle).
+#ifndef TORSION_LINEAR
+			{
+				int period = supremumx - infimumx + 1;   // 144
+				int d = par2 - par1;
+				if (d > period / 2)      d -= period;
+				else if (d <= -period/2) d += period;
+				// wrap back into [infimumx, supremumx] so the SBX bound terms
+				// (y1-yl) and (yu-y2) stay non-negative
+				par2 = wrap_torsion(par1 + d);
+			}
+#endif
 			if (abs(par1 - par2) > 0)	// changed by Deb (31/10/01)
 			{
 				if (par2 > par1)
@@ -332,15 +369,17 @@ void MOGA::realcross(individual parent1, individual parent2)
 				chld2 = 0.5 * ((y1 + y2) + betaq * (y2 - y1));
 
 			}
-			// added by deb (31/10/01)
-			if (chld1 < yl)
-				chld1 = yl;
-			if (chld1 > yu)
-				chld1 = yu;
-			if (chld2 < yl)
-				chld2 = yl;
-			if (chld2 > yu)
-				chld2 = yu;
+			// v1 (2026): wrap children onto the circle instead of clamping,
+			// so crossover can move across the +/-180 deg seam.
+#ifdef TORSION_LINEAR
+			if (chld1 < yl) chld1 = yl;
+			if (chld1 > yu) chld1 = yu;
+			if (chld2 < yl) chld2 = yl;
+			if (chld2 > yu) chld2 = yu;
+#else
+			chld1 = wrap_torsion(chld1);
+			chld2 = wrap_torsion(chld2);
+#endif
 		}
 		else
 		{
@@ -383,13 +422,15 @@ void MOGA::real_mutate (individual * new_pop_ptr)
 				if (rnd <= 0.5)
 				{
 					double xy = 1.0 - delta;
-					int val = 2 * rnd + (1 -	2 * rnd) * (std::pow(xy, double(MOGAParam_.n_distribution_m + 1)));
+					// v1 (2026): was 'int val = ...' which truncated the polynomial
+					// mutation to 0/1 and destroyed the mutation distribution.
+					double val = 2 * rnd + (1 - 2 * rnd) * (std::pow(xy, double(MOGAParam_.n_distribution_m + 1)));
 					deltaq = pow(val, indi) - 1.0;
 				}
 				else
 				{
 					double xy = 1.0 - delta;
-					int val = 2.0 * (1.0 - rnd) + 2.0 * (rnd - 0.5) * (pow (xy, double(MOGAParam_.n_distribution_m + 1)));
+					double val = 2.0 * (1.0 - rnd) + 2.0 * (rnd - 0.5) * (pow (xy, double(MOGAParam_.n_distribution_m + 1)));
 					deltaq = 1.0 - (pow (val, indi));
 				}
 
@@ -397,16 +438,22 @@ void MOGA::real_mutate (individual * new_pop_ptr)
 				//  *ptr  = *ptr + deltaq*(yu-yl);
 				// Added by Deb (31/10/01)
 				y = y + deltaq * (yu - yl);
-				if (y < yl)
-					y = yl;
-				if (y > yu)
-					y = yu;
+				// v1 (2026): wrap onto the circle instead of clamping, so mutation
+				// can cross the +/-180 deg seam.
+#ifdef TORSION_LINEAR
+				if (y < yl) y = yl;
+				if (y > yu) y = yu;
 				new_pop_ptr->xreal[i] = y;
+#else
+				new_pop_ptr->xreal[i] = wrap_torsion(y);
+#endif
 			}
 			else
 			{
-				int xy = randomperc();
-				new_pop_ptr->xreal[i] = xy * (yu - yl) + yl;
+				// v1 (2026): randomperc() returns [0,1); was assigned to int 'xy'
+				// giving 0 always -- a real bug. Use a proper integer draw.
+				int xy = (int)(randomperc() * (yu - yl + 1)) + yl;
+				new_pop_ptr->xreal[i] = wrap_torsion(xy);
 			}
 		}
 	}

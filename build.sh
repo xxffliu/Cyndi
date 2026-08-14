@@ -21,3 +21,4 @@ g++ -O3 -DWIN32 -DNDEBUG -D_CONSOLE \
     src/*.cpp \
     -o "$OUT"
 echo "Built: $OUT"
+echo "Note: define TORSION_LINEAR to disable circular torsion encoding (-DTORSION_LINEAR)"

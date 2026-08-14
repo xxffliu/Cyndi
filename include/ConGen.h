@@ -28,7 +28,9 @@ const int MAX_ARCHIVE_SIZE = 10000; // maximum size possible (the upper bound) o
 // epsilon matrix, this controls the num of solutions generated into the archive. The smaller of
 // these value, the more solutions remained in the final archive
 // Shoule be treated as a user-defined parameter
-const double epsilon[4] = {15, 8, 0.5, 0.1};
+// v1 (2026): objective layout changed to (total energy, RMSD, -gyration, -ele),
+// so grid sizes are re-tuned to those units.
+const double epsilon[4] = {20, 0.5, 0.1, 5};
 const int supremumx = 71, infimumx = -72; // the upper and lower bounds for variables
 
 const float torsionStep = 2.5;

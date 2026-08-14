@@ -46,13 +46,14 @@ def usage():
 def generate_parameters():
     paramfile = open("CyndiParam.in", 'w')
     paramfile.write("MOGA_Max_Conformers\t\t%i\n\
+MOGA_Num_Objectives\t\t3\n\
 MOGA_Max_Generation\t\t%i\n\
 MOGA_Population_Size\t\t%i\n\
 MOGA_Max_Run\t\t%i\n\
 MOGA_Crossover_Probability\t\t%f\n\
 MOGA_Mutation_Probability\t\t%f\n\
 MOGA_SBX\t\t15 20\n\
-MOGA_Epsilon_Quaternion\t\t 50 10 0.5 0.5\n\
+MOGA_Epsilon_Quaternion\t\t 3 0.3 0.1 2\n\
 MOGA_Keep_Input_Conformer[Y/N]\t\t%s\n\
 MOGA_Optimize_Conformer[Y/N]\t\t%s\n\
 MOGA_Energy_Cutoff\t\t%i\n\

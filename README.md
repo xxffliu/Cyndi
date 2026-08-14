@@ -70,6 +70,38 @@ build.sh        MinGW build script
 - Optimized: force-field setup hoisted out of the per-conformer loop (~3x speedup), `pow()` → multiplication in VDW kernels
 - Clustering now uses Kabsch-aligned heavy-atom RMSD (was unaligned RMSD)
 
+## v1 Algorithm Rework (2026)
+
+Rebuilt the MOGA objective design and torsion encoding, validated on a
+20-molecule subset of the 329 test set (min-RMSD to the input/bioactive
+conformer, lower is better):
+
+| Configuration | mean min-RMSD | mean conformers | speed |
+|---|---|---|---|
+| original 4-obj (VDW, torsion, RMSD, -Rg) | 0.604 Å | 27.6 | 0.67 s/mol |
+| v1 2-obj (confEnergy, RMSD) | 0.524 Å | 6.3 | 0.26 s/mol |
+| **v1 3-obj (confEnergy, RMSD, -Rg) — default** | **0.503 Å** | 30.6 | 0.86 s/mol |
+
+Changes:
+- **Objective f0 = conformation-dependent energy** (torsion + VDW +
+  electrostatics). The original split VDW/torsion objectives were strongly
+  correlated; electrostatics (H-bonds, charge distribution) was previously
+  excluded from the search entirely. Full FF energy is NOT used because
+  stretch/bend/oop terms are constant under dihedral rotation and flatten the
+  Pareto front into a single epsilon box.
+- **f1 = aligned RMSD** vs. input conformer (unchanged role, now the only
+  diversity objective in 2-obj mode).
+- **Circular torsion encoding**: torsions are periodic; crossover maps parents
+  onto the shortest arc and children wrap around ±180° instead of clamping.
+- **Fixed silent ε-parameter bug**: `MOGA_Epsilon_Quaternion` in the parameter
+  file was never parsed (the parser only knew the four separate
+  `MOGA_*_Epsilon` keys), so grid sizes silently fell back to code defaults.
+- **Fixed polynomial mutation bugs**: `int val = ...` truncated the mutation
+  step to 0/1 (destroying the distribution); the random redraw also assigned
+  `randomperc()` ∈ [0,1) to an `int`, always yielding 0.
+- Tuned defaults: `MOGA_Num_Objectives 3`, `MOGA_Epsilon_Quaternion 3 0.3 0.1 2`,
+  `MOGA_Energy_Cutoff 60` (see `Cyndi/CyndiParam.in`).
+
 ## License
 
 Released under the [MIT License](LICENSE).
