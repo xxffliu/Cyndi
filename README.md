@@ -72,15 +72,19 @@ build.sh        MinGW build script
 
 ## v1 Algorithm Rework (2026)
 
-Rebuilt the MOGA objective design and torsion encoding, validated on a
-20-molecule subset of the 329 test set (min-RMSD to the input/bioactive
-conformer, lower is better):
+Rebuilt the MOGA objective design and torsion encoding. Validated on the full
+**329-molecule test set** (min-RMSD of generated conformers to the input
+/bioactive conformer, Kabsch-aligned heavy atoms, lower is better):
 
-| Configuration | mean min-RMSD | mean conformers | speed |
-|---|---|---|---|
-| original 4-obj (VDW, torsion, RMSD, -Rg) | 0.604 Å | 27.6 | 0.67 s/mol |
-| v1 2-obj (confEnergy, RMSD) | 0.524 Å | 6.3 | 0.26 s/mol |
-| **v1 3-obj (confEnergy, RMSD, -Rg) — default** | **0.503 Å** | 30.6 | 0.86 s/mol |
+| Configuration | mean min-RMSD | median | ≤1.0 Å | ≤2.0 Å | mean confs | total time |
+|---|---|---|---|---|---|---|
+| original 4-obj (VDW, torsion, RMSD, -Rg) | 1.044 Å | 0.697 Å | 63.8% | 88.1% | 22.6 | 200 s |
+| **v1 3-obj (confEnergy, RMSD, -Rg) — default** | **0.814 Å** | **0.545 Å** | **72.3%** | **93.0%** | 25.2 | 223 s |
+
+- **22% lower mean min-RMSD**; improved on 164 molecules, regressed on 71,
+  equal on 94. The largest gains are on flexible ligands (e.g. 1f0u
+  11.1→1.1 Å, 1hos 11.0→2.6 Å, 1r1h 4.6→1.6 Å).
+- Both runs: 329/329 molecules processed, 0 failures, fixed seed 0.42.
 
 Changes:
 - **Objective f0 = conformation-dependent energy** (torsion + VDW +
@@ -101,6 +105,8 @@ Changes:
   `randomperc()` ∈ [0,1) to an `int`, always yielding 0.
 - Tuned defaults: `MOGA_Num_Objectives 3`, `MOGA_Epsilon_Quaternion 3 0.3 0.1 2`,
   `MOGA_Energy_Cutoff 60` (see `Cyndi/CyndiParam.in`).
+- Benchmark harness: `bench/runner.py`, `bench/analyze.py`, full per-molecule
+  results in `bench/analysis_new.txt` / `bench/analysis_old.txt`.
 
 ## License
 

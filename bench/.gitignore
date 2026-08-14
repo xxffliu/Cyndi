@@ -1,0 +1,6 @@
+# Benchmark outputs (regenerable via runner.py)
+bench/out_*.mol2
+bench/run_*.log
+bench/*.exe
+bench/t*.mol2
+bench/1a28.mol2
