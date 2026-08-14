@@ -79,12 +79,19 @@ Rebuilt the MOGA objective design and torsion encoding. Validated on the full
 | Configuration | mean min-RMSD | median | ≤1.0 Å | ≤2.0 Å | mean confs | total time |
 |---|---|---|---|---|---|---|
 | original 4-obj (VDW, torsion, RMSD, -Rg) | 1.044 Å | 0.697 Å | 63.8% | 88.1% | 22.6 | 200 s |
-| **v1 3-obj (confEnergy, RMSD, -Rg) — default** | **0.814 Å** | **0.545 Å** | **72.3%** | **93.0%** | 25.2 | 223 s |
+| v1 3-obj (confEnergy, RMSD, -Rg) | 0.814 Å | 0.545 Å | 72.3% | 93.0% | 25.2 | 223 s |
+| **v2 3-obj + dual archive — default** | **0.732 Å** | **0.536 Å** | **74.8%** | **94.5%** | 31.6 | 417 s |
 
-- **22% lower mean min-RMSD**; improved on 164 molecules, regressed on 71,
-  equal on 94. The largest gains are on flexible ligands (e.g. 1f0u
-  11.1→1.1 Å, 1hos 11.0→2.6 Å, 1r1h 4.6→1.6 Å).
-- Both runs: 329/329 molecules processed, 0 failures, fixed seed 0.42.
+- **v1: 22% lower mean min-RMSD** vs original; improved on 164 molecules,
+  regressed on 71, equal on 94. The largest gains are on flexible ligands
+  (e.g. 1f0u 11.1→1.1 Å, 1hos 11.0→2.6 Å, 1r1h 4.6→1.6 Å).
+- **v2: further 10% lower mean min-RMSD** vs v1 (0.814→0.732 Å) by adding an
+  ε-NSGA-II style diversity archive; improved on 134 molecules, regressed on
+  85. Notably fixes v1's worst failures (1rne 10.2→2.1 Å, 1mts 2.0→0.68 Å,
+  1ian 2.1→1.1 Å). Runtime roughly doubles (the diversity archive roughly
+  doubles the archive size; tuning `MOGA_Population_Size`/`MOGA_Max_Generation`
+  can trade accuracy for speed).
+- All runs: 329/329 molecules processed, 0 failures, fixed seed 0.42.
 
 Changes:
 - **Objective f0 = conformation-dependent energy** (torsion + VDW +
@@ -97,6 +104,12 @@ Changes:
   diversity objective in 2-obj mode).
 - **Circular torsion encoding**: torsions are periodic; crossover maps parents
   onto the shortest arc and children wrap around ±180° instead of clamping.
+- **v2: dual archive (ε-NSGA-II style)**: the original ε-dominance grid
+  archive guarantees convergence; a second maximin (farthest-neighbour)
+  diversity archive keeps spread non-dominated solutions that the ε grid
+  rejected, and same-box competition uses normalized crowding distance
+  (`obj_distance`/`min_archive_distance`/`update_diversity_archive` in
+  `ConGen.cpp`).
 - **Fixed silent ε-parameter bug**: `MOGA_Epsilon_Quaternion` in the parameter
   file was never parsed (the parser only knew the four separate
   `MOGA_*_Epsilon` keys), so grid sizes silently fell back to code defaults.

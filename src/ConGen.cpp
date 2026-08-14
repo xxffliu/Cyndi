@@ -61,6 +61,8 @@ bool MOGA::setup(const MOL& mol)
 	N_of_x = mol_.get_num_of_rot_bonds();
 	population.clear();
 	archive.clear();
+	// v2 (2026): reset the diversity archive for each molecule
+	div_archive.clear();
 	int popSize = MOGAParam_.PopSize_ + 20 * mol_.get_num_of_rot_bonds();
 	population.resize(popSize);
 	archive.resize(MAX_ARCHIVE_SIZE);
@@ -150,8 +152,11 @@ vector<Conformer> MOGA::execuateMOGA()
 	print_func_values_();
 #endif
 	//int OutNum = (archive_size <= MOGAParam_.MaxNumConformer_) ? archive_size : MOGAParam_.MaxNumConformer_;
-	int OutNum = archive_size;
-	for (int i = 0; i < OutNum; i++)
+	// v2 (2026): merge the epsilon archive and the diversity archive. The
+	// diversity archive holds spread non-dominated solutions rejected by the
+	// epsilon grid, so the final set covers the front more uniformly.
+	int OutNum = archive_size + (int)div_archive.size();
+	for (int i = 0; i < archive_size; i++)
 	{
 		tmp.torsions = archive[i].xreal;
 		tmp.VDWEnergy = archive[i].f[0];
@@ -160,6 +165,16 @@ vector<Conformer> MOGA::execuateMOGA()
 		tmp.rmsd = archive[i].f[2];
 		//tmp.GyrationRdius = 1/archive[i].f[3];
 		tmp.GyrationRdius = -archive[i].f[3];
+		arch.push_back(tmp);
+	}
+	for (int i = 0; i < (int)div_archive.size(); i++)
+	{
+		tmp.torsions = div_archive[i].xreal;
+		tmp.VDWEnergy = div_archive[i].f[0];
+		tmp.TorsionEnergy = div_archive[i].f[1];
+		tmp.TotalEnergy = div_archive[i].energy;
+		tmp.rmsd = div_archive[i].f[2];
+		tmp.GyrationRdius = -div_archive[i].f[3];
 		arch.push_back(tmp);
 	}
 	mol_.reset();
@@ -632,7 +647,21 @@ int MOGA::update()
 					else
 					{
 						if (dom_check (newchild, archive[i]) == 0)	//changed
-							accept_flag = -1;
+						{
+							// v2 (2026): mutually non-dominated solutions in the
+							// same epsilon box: keep the one with the larger
+							// nearest-neighbour (crowding) distance so the front
+							// spreads out instead of collapsing onto box centres.
+							double child_crowd = min_archive_distance (newchild, archive, archive_size, -1);
+							double arch_crowd  = min_archive_distance (archive[i], archive, archive_size, i);
+							if (child_crowd > arch_crowd)
+							{
+								archive[i] = newchild;
+								accept_flag = 1;
+							}
+							else
+								accept_flag = -1;
+						}
 						else
 						{
 							for (int p = 0; p < MOGAParam_.NumObjects_; p++)
@@ -691,6 +720,11 @@ int MOGA::con_update ()
 		// insert the new child in the usual manner into the archive after
 		// removing the infeasible points.
 		flg = update ();
+		// v2 (2026): a child rejected by the epsilon archive (dominated or
+		// crowded out of its box) may still widen the Pareto front -- offer it
+		// to the diversity archive (maximin update).
+		if (flg < 0)
+			update_diversity_archive (newchild);
 	}
 	else
 	{
@@ -742,6 +776,84 @@ double MOGA::distance (individual ind1, vector<double>point)
 	}
 	dist = sqrt (dist);
 	return (dist);
+}
+
+// v2 (2026): objective-space distance normalised by the epsilon grid. Each
+// objective is divided by its grid size so the crowding metric is
+// dimensionless and no objective dominates the distance by unit scale.
+double MOGA::obj_distance (individual ind1, individual ind2)
+{
+	double dist = 0.0;
+	for (int i = 0; i < MOGAParam_.NumObjects_; i++)
+	{
+		double eps = MOGAParam_.EPSILON_[i];
+		if (isNearZero(eps))
+			eps = 1.0;
+		double d = (ind1.f[i] - ind2.f[i]) / eps;
+		dist += d * d;
+	}
+	return sqrt (dist);
+}
+
+// v2 (2026): distance from ind to its nearest neighbour in arch, excluding the
+// member at index skip_idx (used so an archive member does not count itself).
+// Returns a large value when there is no other member.
+double MOGA::min_archive_distance (individual ind, vector<individual>& arch, int arch_size, int skip_idx)
+{
+	double best = 1e30;
+	for (int i = 0; i < arch_size; i++)
+	{
+		if (i == skip_idx)
+			continue;
+		double d = obj_distance (ind, arch[i]);
+		if (d < best)
+			best = d;
+	}
+	return best;
+}
+
+// v2 (2026): maximin update of the diversity archive. A solution is admitted
+// if it is not dominated by any current member; when the archive is full the
+// most crowded member (smallest nearest-neighbour distance) is replaced if the
+// newcomer is more isolated. This complements the epsilon archive which may
+// reject spread solutions that fall into already-occupied boxes.
+void MOGA::update_diversity_archive (individual& ind)
+{
+	// reject solutions that are dominated by an existing diversity member
+	for (int i = 0; i < (int)div_archive.size(); i++)
+	{
+		if (dom_check (div_archive[i], ind) == 1)
+			return;
+	}
+	// remove existing members that the newcomer dominates
+	for (int i = 0; i < (int)div_archive.size(); i++)
+	{
+		if (dom_check (ind, div_archive[i]) == 1)
+		{
+			div_archive.erase (div_archive.begin () + i);
+			i--;
+		}
+	}
+	double ind_min = min_archive_distance (ind, div_archive, (int)div_archive.size(), -1);
+	if (div_archive.size () < MAX_ARCHIVE_SIZE)
+	{
+		div_archive.push_back (ind);
+		return;
+	}
+	// archive full: replace the most crowded member if the newcomer is better
+	int worst = -1;
+	double worst_min = ind_min;
+	for (int i = 0; i < (int)div_archive.size(); i++)
+	{
+		double m = min_archive_distance (div_archive[i], div_archive, (int)div_archive.size(), i);
+		if (m < worst_min)
+		{
+			worst_min = m;
+			worst = i;
+		}
+	}
+	if (worst >= 0 && ind_min > worst_min)
+		div_archive[worst] = ind;
 }
 
 // Check for domination (usual sense)

@@ -89,6 +89,11 @@ class MOGA
 			  float Ecutoff_;
               vector<individual> population;
               vector<individual> archive;
+              // v2 (2026): second archive for diversity (epsilon-NSGA-II style).
+              // The epsilon-dominance archive guarantees convergence; the diversity
+              // archive keeps well-spread non-dominated solutions that were rejected
+              // by the epsilon grid (maximin / crowding based).
+              vector<individual> div_archive;
               individual newchild, newchild1, newchild2;
               // Number of decision variables
               int N_of_x;
@@ -122,6 +127,17 @@ class MOGA
               // Finds the distance between corner[] and between the decision variable
               // coordinates of the individual
               double distance (individual ind1, vector<double> point);
+              // v2 (2026): objective-space distance between two individuals,
+              // normalised by the epsilon grid so each objective contributes
+              // comparably (crowding metric).
+              double obj_distance (individual ind1, individual ind2);
+              // v2 (2026): minimum objective-space distance from ind to all members
+              // of the given archive, excluding member skip_idx (-1 = none).
+              // Returns a large value when the archive is empty.
+              double min_archive_distance (individual ind, vector<individual>& arch, int arch_size, int skip_idx);
+              // v2 (2026): try to add a non-dominated individual to the diversity
+              // archive using a maximin (farthest-neighbour) rule.
+              void update_diversity_archive (individual& ind);
               int con_update ();
               // The Update function, called to update the archive in every iteration
               int update ();
