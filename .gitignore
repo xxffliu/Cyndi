@@ -1,0 +1,25 @@
+# Build artifacts
+build/
+*.o
+*.obj
+*.exe
+
+# Visual Studio
+Debug/
+Release/
+ipch/
+*.ncb
+*.suo
+*.sdf
+*.user
+*.vcxproj.user
+UpgradeLog.XML
+
+# Runtime logs / backups
+*.log
+*.bak
+time.log
+
+# OS
+.DS_Store
+Thumbs.db

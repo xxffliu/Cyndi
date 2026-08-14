@@ -1,0 +1,15 @@
+MOGA_Max_Conformers		100
+MOGA_Num_Objectives		4
+MOGA_Max_Generation		100
+MOGA_Population_Size		100
+MOGA_Max_Run			1
+MOGA_Crossover_Probability	0.850000
+MOGA_Mutation_Probability	0.100000
+MOGA_SBX			15 20
+MOGA_Epsilon_Quaternion		100 10 0.5 0.1
+MOGA_Keep_Input_Conformer[Y/N]	N
+MOGA_Optimize_Conformer[Y/N]	Y
+MOGA_Energy_Cutoff		20
+MOGA_RMSD_Scale_Factor		0.200000
+MOGA_Max_Opt_Iteration		50
+MOGA_Split_Output[Y/N]		N

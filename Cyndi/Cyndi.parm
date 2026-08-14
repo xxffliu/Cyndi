@@ -1,0 +1,27 @@
+# Maximum conformations to be generated for each molecule
+MOGA_Max_Conformers             300
+# Maximum evolution generations in the multi-objective evolution algorithm
+MOGA_Max_Generation             500
+# Population size in the multi-objective evolution algorithm
+MOGA_Population_Size            500
+# Number of independent runs of evolution algorithm
+MOGA_Max_Run            1
+# Crossover and mutation probability
+MOGA_Crossover_Probability              0.8
+MOGA_Mutation_Probability               0.1
+MOGA_SBX                15 20
+# Forcefield type
+MOGA_ForceField_Type[TAFF/MMFF94]               MMFF94
+# Number of obejectives in the multi-objective evolution algorithm
+MOGA_Num_Objectives             4
+# the epsilon values of each objectives
+MOGA_VDW_Energy_Epsilon         5.0
+MOGA_Torsion_Energy_Epsilon             4.0
+MOGA_RMSD_Epsilon               0.5
+MOGA_Gyration_Radius_Epsilon            0.1
+# Keep the input conformer
+MOGA_Keep_Input_Conformer[Y/N]          N
+MOGA_Energy_Cutoff              10.0
+MOGA_RMSD_Scale_Factor          0.5
+# MOGA_Random_Seed[0-1]         0.789
+
