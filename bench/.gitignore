@@ -1,6 +1,7 @@
 # Benchmark outputs (regenerable via runner.py)
-bench/out_*.mol2
-bench/run_*.log
-bench/*.exe
-bench/t*.mol2
-bench/1a28.mol2
+# NOTE: patterns are relative to this dir (bench/), no leading "bench/"
+out_*.mol2
+run_*.log
+*.exe
+t*.mol2
+1a28.mol2
