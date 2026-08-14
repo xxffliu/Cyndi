@@ -156,15 +156,19 @@ vector<Conformer> MOGA::execuateMOGA()
 	// diversity archive holds spread non-dominated solutions rejected by the
 	// epsilon grid, so the final set covers the front more uniformly.
 	int OutNum = archive_size + (int)div_archive.size();
+	// v3 (2026): FIX -- f[] is a vector whose size == NumObjects_; reading f[2]
+	// (2-obj runs) or f[3] (2/3-obj runs) unconditionally was out-of-bounds UB
+	// that read stale heap garbage. Access only the objectives actually computed.
+	int nobj = MOGAParam_.NumObjects_;
 	for (int i = 0; i < archive_size; i++)
 	{
 		tmp.torsions = archive[i].xreal;
 		tmp.VDWEnergy = archive[i].f[0];
 		tmp.TorsionEnergy = archive[i].f[1];
 		tmp.TotalEnergy = archive[i].energy;
-		tmp.rmsd = archive[i].f[2];
+		tmp.rmsd = (nobj >= 3) ? archive[i].f[2] : 0.0;
 		//tmp.GyrationRdius = 1/archive[i].f[3];
-		tmp.GyrationRdius = -archive[i].f[3];
+		tmp.GyrationRdius = (nobj >= 4) ? -archive[i].f[3] : 0.0;
 		arch.push_back(tmp);
 	}
 	for (int i = 0; i < (int)div_archive.size(); i++)
@@ -173,8 +177,8 @@ vector<Conformer> MOGA::execuateMOGA()
 		tmp.VDWEnergy = div_archive[i].f[0];
 		tmp.TorsionEnergy = div_archive[i].f[1];
 		tmp.TotalEnergy = div_archive[i].energy;
-		tmp.rmsd = div_archive[i].f[2];
-		tmp.GyrationRdius = -div_archive[i].f[3];
+		tmp.rmsd = (nobj >= 3) ? div_archive[i].f[2] : 0.0;
+		tmp.GyrationRdius = (nobj >= 4) ? -div_archive[i].f[3] : 0.0;
 		arch.push_back(tmp);
 	}
 	mol_.reset();
