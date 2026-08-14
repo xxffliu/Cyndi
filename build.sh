@@ -20,5 +20,11 @@ g++ -O3 -DWIN32 -DNDEBUG -D_CONSOLE \
     -idirafter "$MINGW" \
     src/*.cpp \
     -o "$OUT"
+# The MSYS2 runtime DLLs are not on PATH by default; copy them next to the
+# exe so it runs from any shell (Windows loads DLLs from the exe's dir first).
+MINGWBIN="/c/Users/Administrator/tools/mingw64/bin"
+for dll in libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll; do
+    cp -f "$MINGWBIN/$dll" "$(dirname "$OUT")/" 2>/dev/null || true
+done
 echo "Built: $OUT"
 echo "Note: define TORSION_LINEAR to disable circular torsion encoding (-DTORSION_LINEAR)"
