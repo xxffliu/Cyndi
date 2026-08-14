@@ -132,7 +132,14 @@ void warmup_random(float random_seed)
     advance_random();
     advance_random();
 
-    //jrand = 0;
+    // v3 (2026): reset the sequence position. randomperc() uses jrand as a
+    // rolling index; without the reset, the stream of a fresh warmup_random
+    // depends on how many random numbers the PREVIOUS molecule consumed.
+    // This was commented out in the original code -- harmless single-threaded
+    // (fixed order) but breaks reproducibility when molecules are processed
+    // in independent batch chunks (each chunk's first molecule would inherit
+    // a different jrand offset).
+    jrand = 0;
 
 }
 

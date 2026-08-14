@@ -132,6 +132,17 @@ Changes:
   additional gain.
 - Benchmark harness: `bench/runner.py`, `bench/analyze.py`, full per-molecule
   results in `bench/analysis_new.txt` / `bench/analysis_old.txt`.
+- Multiprocess batch driver: `bench/run_parallel.py` splits a multi-molecule
+  mol2 across N independent Cyndi processes and merges the outputs in input
+  order. With a fixed seed the merged output is bit-identical to a single
+  run (per-molecule seeds are derived from the molecule's global index via
+  the `-startidx`/`-maxmols` CLI options). Example:
+
+      python bench/run_parallel.py -input 329_test_set.mol2 \\
+          -parm Cyndi/CyndiParam.in -n 4 -out all.mol2 -seed 0.42
+
+  Measured on a 20-molecule subset: 68.2 s (1 process) vs 35.4 s (4
+  processes) on 4 logical cores, identical output.
 
 ## License
 

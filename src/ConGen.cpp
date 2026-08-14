@@ -15,7 +15,7 @@ individual& individual::operator =(const individual &rhs)
 	gyration_radius = rhs.gyration_radius;
 	return *this;
 }
-MOGA::MOGA():archive_size(0), taff_()
+MOGA::MOGA():archive_size(0), taff_(), mo_global_idx_(0)
 {
 	// v1 (2026): keep the electrostatic component enabled so the search
 	// objective includes full MMFF94/TAFF energy (H-bonds & charge distribution).
@@ -27,7 +27,7 @@ MOGA::MOGA():archive_size(0), taff_()
 			MOGAParam_.EPSILON_[i] = epsilon[i];
 	}
 }
-MOGA::MOGA(const MOL& mol):archive_size(0),taff_()
+MOGA::MOGA(const MOL& mol):archive_size(0),taff_(), mo_global_idx_(0)
 {
 	// v1 (2026): electrostatics enabled during search (see note in ctor above)
 	for(int i = 0; i < 4; i++)
@@ -114,11 +114,23 @@ vector<Conformer> MOGA::execuateMOGA()
 	Conformer tmp;
 
 	int child_flag1 = 0, flg = 0, child_flag2 = 0;
-	if(!MOGAParam_.UseInputRandomSeed_)
-		// generate the random number seed based on current time
-		MOGAParam_.BasicSeed_ = TimeRandomSeed();
+	// v3 (2026): derive a per-molecule seed from the base seed and the
+	// molecule's GLOBAL index (mo_global_idx_ already includes StartIndex_,
+	// set by the batch driver), so that (a) parallel batch processes each get
+	// deterministic, distinct streams and (b) the union of chunk outputs is
+	// identical to a single run over the whole file. When no fixed seed is
+	// requested, fall back to the original time-based seeding.
+	float eff_seed = MOGAParam_.BasicSeed_;
+	if(MOGAParam_.UseInputRandomSeed_)
+		eff_seed = MOGAParam_.BasicSeed_ + 0.001f * (float)mo_global_idx_;
+	else
+		eff_seed = TimeRandomSeed();
 
-	warmup_random (MOGAParam_.BasicSeed_);
+	// v3 (2026): use randomize() (clear oldrand + warmup) instead of bare
+	// warmup_random(): warmup_random leaves oldrand[0] and stale values from
+	// the PREVIOUS molecule's stream, so the sequence for a given seed
+	// depends on processing history -- breaking chunk-vs-full reproducibility.
+	randomize (eff_seed);
 	create_random_pop ();
 	create_archive();
 #ifdef DEBUG

@@ -273,6 +273,18 @@ void CyndiOptionParser(int argc, char* argv[])
 				MOGAParam_.rmsdScaleFactor_ = str2double(argv[i+1]);
 				i += 2;
 			}
+			// v3 (2026): first molecule index to process (0-based) and max
+			// count (0 = to EOF). Used by the multiprocess batch driver.
+			else if(string(argv[i]) == "-startidx")
+			{
+				MOGAParam_.StartIndex_ = str2int(argv[i+1]);
+				i += 2;
+			}
+			else if(string(argv[i]) == "-maxmols")
+			{
+				MOGAParam_.MaxMolecules_ = str2int(argv[i+1]);
+				i += 2;
+			}
 			// parameter file
 			else if(string(argv[i]) == "-parm")
 			{

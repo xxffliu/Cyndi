@@ -79,6 +79,9 @@ class MOGA
              void clear();
              // setup method
              bool setup(const MOL& mol);
+             // v3 (2026): assign this instance's global molecule index (used
+             // to derive a per-molecule RNG seed in execuateMOGA).
+             void set_global_idx(int idx) { mo_global_idx_ = idx; }
              //execuation method
              vector<Conformer> execuateMOGA();
              
@@ -90,10 +93,13 @@ class MOGA
               vector<individual> population;
               vector<individual> archive;
               // v2 (2026): second archive for diversity (epsilon-NSGA-II style).
-              // The epsilon-dominance archive guarantees convergence; the diversity
-              // archive keeps well-spread non-dominated solutions that were rejected
-              // by the epsilon grid (maximin / crowding based).
+              // The diversity archive holds spread non-dominated solutions that
+              // the epsilon grid rejected, so the final set covers the front
+              // more uniformly.
               vector<individual> div_archive;
+              // v3 (2026): global index of the molecule this instance is
+              // processing (used for deterministic per-molecule seeds).
+              int mo_global_idx_;
               individual newchild, newchild1, newchild2;
               // Number of decision variables
               int N_of_x;

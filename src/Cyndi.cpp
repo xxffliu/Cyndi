@@ -77,8 +77,19 @@ void execuateCONGEN()
 	MOL2IO outfile;
 	outfile.open(MOGAParam_.OutputFile_, "out");
 	int Counter(0), failCounter(0);
+	int GlobalIdx = 0;   // v3 (2026): global molecule index (0-based)
 	while (infile.read(&mol_))
 	{
+		// v3 (2026): multiprocess batch support -- skip molecules before
+		// StartIndex_ and stop after MaxMolecules_ (0 = to EOF).
+		if(GlobalIdx < MOGAParam_.StartIndex_)
+		{
+			GlobalIdx += 1;
+			mol_.clear();
+			continue;
+		}
+		if(MOGAParam_.MaxMolecules_ > 0 && Counter >= MOGAParam_.MaxMolecules_)
+			break;
 		Counter += 1;
 		mol_.initialize();
 		string name = mol_.get_name();
@@ -132,6 +143,10 @@ void execuateCONGEN()
 			// starting timing
 			start = clock();
 			MOGA congen;
+		// v3 (2026): tell the MOGA which global molecule index this is, so its
+		// RNG seed = BasicSeed_ + 0.001 * GlobalIdx -- deterministic per
+		// molecule and identical whether run solo or as a batch chunk.
+		congen.set_global_idx(GlobalIdx);
 			bool success = congen.setup(mol_);
 			if(!success)
 			{
@@ -256,6 +271,7 @@ void execuateCONGEN()
 				conf.pop();
 			}
 		}
+		GlobalIdx += 1;   // v3 (2026): advance the global index for the next molecule
 	}
 	if(!FailedVector.empty())
 	{
