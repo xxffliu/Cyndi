@@ -1,0 +1,96 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Release (default compiler)",
+      "description": "Whatever compiler CMake finds. Use this on Linux/macOS.",
+      "binaryDir": "${sourceDir}/build-cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CYNDI_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "debug",
+      "inherits": "default",
+      "displayName": "Debug (default compiler)",
+      "binaryDir": "${sourceDir}/build-debug",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "asan",
+      "inherits": "debug",
+      "displayName": "Debug + AddressSanitizer",
+      "binaryDir": "${sourceDir}/build-asan",
+      "cacheVariables": { "CYNDI_SANITIZE": "address" }
+    },
+    {
+      "name": "mingw-release",
+      "displayName": "Windows / MinGW-w64 + Ninja (Release)",
+      "description": "MinGW-w64 + Ninja. Takes g++ from PATH; build_windows.bat puts it there, or pin it in CMakeUserPresets.json.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-mingw",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CYNDI_BUILD_TESTS": "ON",
+        "CYNDI_STATIC_RUNTIME": "ON"
+      }
+    },
+    {
+      "name": "mingw-debug",
+      "inherits": "mingw-release",
+      "displayName": "Windows / MinGW-w64 + Ninja (Debug)",
+      "binaryDir": "${sourceDir}/build-mingw-debug",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "mingw-make-release",
+      "inherits": "mingw-release",
+      "displayName": "Windows / MinGW-w64 + mingw32-make (Release)",
+      "description": "Fallback when mingw32-make is installed instead of ninja.",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build-mingw-make"
+    },
+    {
+      "name": "mingw-torsion-linear",
+      "inherits": "mingw-release",
+      "displayName": "Windows / MinGW-w64, pre-v1 linear torsion encoding",
+      "description": "For A/B against the original clamping crossover and mutation.",
+      "binaryDir": "${sourceDir}/build-mingw-linear",
+      "cacheVariables": { "CYNDI_TORSION_LINEAR": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "default", "configurePreset": "default" },
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "asan", "configurePreset": "asan" },
+    { "name": "mingw-release", "configurePreset": "mingw-release" },
+    { "name": "mingw-debug", "configurePreset": "mingw-debug" },
+    { "name": "mingw-make-release", "configurePreset": "mingw-make-release" },
+    { "name": "mingw-torsion-linear", "configurePreset": "mingw-torsion-linear" }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "mingw-release",
+      "configurePreset": "mingw-release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "mingw-make-release",
+      "configurePreset": "mingw-make-release",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}
