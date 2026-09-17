@@ -1,16 +1,25 @@
+# Cyndi parameters. Retuned 2026-09-16 on the 329-molecule test set with the
+# corrected RMSD evaluator (see README, 'v4 Correctness + Performance Pass').
+# Mutation 0.4 is the retuned optimum -- the old 0.1/0.2 recommendation was
+# measured while polynomial mutation was dead code.
+# MOGA_Max_Generation 300 is the fast setting (mean min-RMSD 0.586 A, 131 s);
+# 1000 gives 0.508 A for 344 s. One generation = two children, so the search
+# budget is roughly PopSize + 2*MaxNumGen -- generations matter, population
+# size mostly sets the initial sample.
 MOGA_Max_Conformers		100
 MOGA_Num_Objectives		3
 MOGA_Max_Generation		300
 MOGA_Population_Size		100
 MOGA_Max_Run		1
 MOGA_Crossover_Probability		0.85
-MOGA_Mutation_Probability		0.2
+MOGA_Mutation_Probability		0.400000
 MOGA_SBX		15 20
 MOGA_Epsilon_Quaternion		2 0.2 0.1 2
 MOGA_Keep_Input_Conformer[Y/N]		N
 MOGA_Optimize_Conformer[Y/N]		Y
 MOGA_Energy_Cutoff		60
 MOGA_RMSD_Scale_Factor		0.2
-MOGA_Max_Opt_Iteration		50
+MOGA_Max_Opt_Iteration		20
+MOGA_Max_Opt_Gradient		0.5
 MOGA_Split_Output[Y/N]		N
 MOGA_Random_Seed		0.42

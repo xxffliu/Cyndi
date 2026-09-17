@@ -1,7 +1,11 @@
-# Benchmark outputs (regenerable via runner.py)
-# NOTE: patterns are relative to this dir (bench/), no leading "bench/"
+# Benchmark outputs and scratch (all regenerable)
 out_*.mol2
 run_*.log
 *.exe
+*.dll
 t*.mol2
-1a28.mol2
+
+# Force-field parameter files are copied here by runner.py at run time;
+# the tracked copies live in Cyndi/.
+MMFF94.parm
+TAFF.parm
