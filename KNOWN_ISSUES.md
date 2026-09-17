@@ -1,81 +1,49 @@
 # Known Issues
 
-## 1. [OPEN] Chunked vs single-process reproducibility differs on some molecules
+## 1. [RESOLVED 2026-09-16] Chunked vs single-process reproducibility differs on some molecules
 
-**Status:** open -- the multiprocess driver (`bench/run_parallel.py`) is
-correct for the 20-molecule subset (verified bit-identical) but still
-diverges on some molecules of the full 329 set (e.g. `1glp`).
+**Root cause:** `GlobalIdx` in `execuateCONGEN()` was incremented at the very
+*end* of the loop body, but four paths `continue` past that point: zero
+rotatable bonds, more than 30 rotatable bonds, `congen.setup()` failure, and
+`num_conf == 0`. The `-startidx` skip path (near the top of the loop) *did*
+increment it correctly. So every molecule after the first skipped one received
+a global index — and therefore an RNG seed — one lower in a whole-file run than
+in a chunked run.
 
-**Symptom.** With a fixed seed (`MOGA_Random_Seed 0.42`), the same molecule
-yields different conformer sets depending on how the process reached it:
+In the 329-molecule test set `1byb` (molecule #34) has more than 30 rotatable
+bonds and is skipped, so from `1glp` (#84) onward the two invocations used
+different seeds. That is exactly the reported pattern: the 20-molecule subset
+was reproducible (it contains no skipped molecule) while the full set diverged
+from `1glp` on.
 
-| invocation                                    | 1glp conformers (before filter) |
-|-----------------------------------------------|--------------------------------|
-| single run over the whole file                | 209                            |
-| `-startidx 83 -maxmols 1` (chunked driver)    | 184 / 112                      |
-| `-startidx 0 -maxmols 84`                     | 99 / 113                       |
+**Fix:** capture the index before the body runs and advance immediately:
 
-The 20-molecule subset (`sub20_full.mol2`) is fully reproducible between a
-single run and 4 chunked runs; the divergence appears only in the full 329
-set, so it correlates with molecules processed earlier in the file.
-
-**What has been established (2026-08):**
-
-- Per-molecule seeds are derived deterministically:
-  `seed = BasicSeed_ + 0.001 * mo_global_idx_`, where `mo_global_idx_` is the
-  molecule's 0-based index in the whole file (`-startidx`/`-maxmols` only
-  select the window; the global index is tracked inside Cyndi).
-- `execuateMOGA` now calls `randomize(seed)` (zeroes `oldrand[55]` + warmup)
-  instead of the original bare `warmup_random(seed)`, and `warmup_random`
-  resets `jrand = 0`. This fixed the *stream*: debug builds print the same
-  first random number (`V3DBG12 first=...`) for the same seed regardless of
-  window, and even the same second random number (`V3DBG13`).
-- **Yet the MOGA run itself still differs** (before-filter counts differ by
-  up to 2x). So the RNG *stream* is identical, but something else in the
-  per-molecule state still depends on processing history.
-- `randomnormaldeviate`/`noise`/`rndcalcflag` are never called by Cyndi;
-  `srand/rand` (via `TimeRandomSeed`) is not used when a fixed seed is set.
-- FF (`MMFF94`/`TAFF`) and `MOL::initialize` do not call the RNG at all.
-
-**Hypotheses not yet ruled out:**
-
-1. Uninitialized memory in `individual` (constructor `f.resize(4)` but no
-   value initialization) or elsewhere that happens to read deterministic
-   garbage in one process layout and different garbage in another. The
-   `f[]` out-of-bounds read was already fixed (`53c873d`) but other vectors
-   (e.g. `box`) may still carry stale values across molecules.
-2. Some static/global mutable state in a force-field component or in
-   `MOL` that `clear()`/`setup()` does not fully reset.
-3. `MOL2IO::read` internal state when skipping molecules (`-startidx` path
-   reads and discards N molecules; the full-run path processes them).
-
-**How to reproduce:**
-
-```
-# single window, whole file (slow, ~25 min on 4 cores)
-python bench/run_parallel.py -input bench/329_test_set.mol2 \
-    -parm bench/CyndiParam_tuned_seed.in -n 1 -seed 0.42 -out full.mol2
-
-# chunked
-python bench/run_parallel.py -input bench/329_test_set.mol2 \
-    -parm bench/CyndiParam_tuned_seed.in -n 4 -seed 0.42 -out chunked.mol2
-
-# compare molecule 1glp
-python bench/analyze.py bench/329_test_set.mol2 full.mol2 full
-python bench/analyze.py bench/329_test_set.mol2 chunked.mol2 chunked
+```cpp
+Counter += 1;
+int ThisIdx = GlobalIdx;   // index of THIS molecule
+GlobalIdx += 1;            // advance now, so every 'continue' path also counts
+...
+congen.set_global_idx(ThisIdx);
 ```
 
-Or fast single-molecule repro:
+**Verified:** with `MOGA_Random_Seed 0.42`, `1glp` produces 11 conformers whose
+`@<TRIPOS>ATOM` blocks are byte-identical between a whole-file run and
+`-startidx 83 -maxmols 1`.
 
-```
-cyndi.exe -input 329_test_set.mol2 -output a.mol2 -parm seed.in -startidx 83 -maxmols 1
-cyndi.exe -input 329_test_set.mol2 -output b.mol2 -parm seed.in -maxmols 84   # 1glp is #84
-# a.mol2 and b.mol2 differ for 1glp even though seed/stream are identical
-```
+A second, smaller reproducibility defect was fixed at the same time in
+`MOL2IO::write`: the atom-count line inherited the stream's `adjustfield`,
+which the atom/bond writer leaves set to `left`. The first molecule written to
+any file therefore got a right-adjusted count line and all later ones a
+left-adjusted one — so the first molecule of every chunk formatted differently
+from the same molecule inside a whole-file run. The writer now sets the
+adjustfield explicitly.
 
-**Impact:** outputs of a chunked batch run may differ slightly from a single
-run on a few molecules. Both are valid conformer sets; the difference is a
-reproducibility/consistency issue, not a crash or a wrong-answer bug.
+The three hypotheses listed in the previous version of this file
+(uninitialised memory, static force-field state, `MOL2IO` read state) can all
+be closed. Two of them did point at real, separate defects, which are also
+fixed now: `individual::gyration_radius` was never initialised and
+`individual::operator=` dropped `cv` (`ConGen.cpp`), and `MOGA::clear()` reset
+`taff_` but not `mmff94_` — the *default* force field — nor `div_archive`.
 
 ---
 
@@ -84,13 +52,82 @@ reproducibility/consistency issue, not a crash or a wrong-answer bug.
 Fixed in `53c873d`. `execuateMOGA` read `f[2]`/`f[3]` unconditionally even
 when `NumObjects_ < 4`; the `f` vector is sized `NumObjects_`, so this was
 heap UB (read stale garbage). Single-threaded runs happened to read stable
-zeros, so results were unaffected; guarded by `nobj >= 3` / `nobj >= 4` now.
+zeros, so results were unaffected.
+
+Superseded 2026-09-16: the `Conformer` field mapping was still the original
+four-objective layout, so `Conformer::rmsd` was being filled from `f[2]`
+(which under the v1 layout is `-gyration radius`, not the RMSD) and
+`TorsionEnergy` from `f[1]` (the RMSD). That only mattered on the
+`MOGA_Optimize_Conformer N` path, which writes `TorVec[i].rmsd` straight into
+the output; it now reads `f[1]` and `individual::gyration_radius`.
 
 ## 3. [RESOLVED] Global RNG state leaked between molecules
 
 Original `execuateMOGA` called `warmup_random(seed)` without zeroing
 `oldrand[]` and without resetting `jrand`, so the stream for a given seed
 depended on how many random numbers previous molecules consumed. Now uses
-`randomize(seed)` (zeroes + warmup + jrand reset). This was required for
-chunk-vs-full reproducibility and also makes every molecule's stream
-independent, which is more correct.
+`randomize(seed)` (zeroes + warmup + jrand reset).
+
+Also fixed 2026-09-16: `oldrand[55]`, `rndx1`, `rndx2` and `rndcalcflag` were
+declared `static` **in `random.h`**, giving every translation unit that
+includes it a private copy of the generator state. It happened to work only
+because `randomize`, `warmup_random`, `advance_random` and `randomperc` all
+live in `random.cpp` and so all touched that file's copy. They are now
+`extern` in the header and defined once in `random.cpp`.
+
+## 4. [RESOLVED 2026-09-16] Segfault on inputs with more than ~580 molecules
+
+`eff_seed = BasicSeed_ + 0.001 * mo_global_idx_` walks out of the `(0,1)`
+interval that the Knuth subtractive generator in `random.cpp` requires — it
+only corrects differences below 0, never values above 1. With the documented
+seed `0.42` this happens at molecule 581, after which `randomperc()` returns
+values of order 1e10 and `(int)(rnds * PopSize_)` becomes an arbitrary index.
+Reproduced by concatenating the 329-molecule set three times and running
+`-startidx 650 -maxmols 3`: segmentation fault before the fix, clean run after.
+The seed is now reduced with `fmod(..., 1.0)` (identical results for
+`idx < 580`, so existing benchmarks are unaffected).
+
+Longer term this generator should be replaced by `std::mt19937_64` seeded with
+`splitmix64(global_index)`, which removes the whole class of problem — but that
+changes every existing result, so it needs its own baseline.
+
+## 5. [OPEN] CG minimisation aborts on a large fraction of conformers
+
+Over the 329-molecule test set, 1520 conformer minimisations end with
+`aborted_ = true` ("no convergence and the step computation failed") out of
+roughly 22 000 — and on some inputs, such as `EGFR_ah.mol2`, essentially every
+minimisation aborts. An aborted minimisation leaves the conformer at whatever
+coordinates the line search reached, so it is not a crash and the conformer is
+still energy-filtered afterwards, but it means the `ConicLineSearch` port from
+BALL is failing to bracket a step on a large class of inputs.
+
+This has been made visible rather than fixed: the per-conformer console message
+is now a counter reported once at the end of the run. Diagnosing it properly
+(and the obvious alternative — replacing the conic/cubic/quadratic
+interpolation cascade with Armijo backtracking or L-BFGS) is the next piece of
+optimiser work.
+
+## 6. [OPEN] `MOL` copy semantics are incomplete
+
+`MOL`'s copy constructor and assignment operator do not copy `bk_pos_`,
+`rmsd_`, `rotation_map`, `rotor_id_map`, `_vring`, `charge_type_` or
+`is_initialized_`, and `_vfragment` is a shallow copy of owning raw pointers
+(the destructor deletes them, so a copy of a molecule with fragments is a
+double free). `ATOM::operator=` copies `bond_` as raw pointers into the *source*
+molecule's bonds.
+
+Nothing downstream currently calls `get_bond_list()` or `apply_rotor()` on a
+copy, so this does not bite today — `Cyndi.cpp`'s `FailedVector`, the
+`priority_queue<MOL>` and `LeaderClustering` only read coordinates. Any new
+code that does will. The fix is either a full deep copy with the adjacency
+lists rebuilt afterwards, or making `MOL` non-copyable with an explicit
+`clone()`.
+
+`ForceField`, `MMFF94` and `TAFF` had the same shape of defect and have been
+made non-copyable (`= delete`) as of 2026-09-16.
+
+## 7. [RESOLVED 2026-09-17] `Cyndi_batch.py` was Python 2
+
+`print` statements; it did not run on any current interpreter. Removed in the
+2026-09-17 repository cleanup. `bench/run_parallel.py` does the same job
+(and splits the work across processes).

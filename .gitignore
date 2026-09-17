@@ -5,7 +5,7 @@ build/
 *.exe
 *.dll
 
-# Visual Studio
+# Visual Studio leftovers (the VS2008-era project itself was removed 2026-09-17)
 Debug/
 Release/
 ipch/
@@ -28,3 +28,26 @@ Thumbs.db
 # Python cache
 __pycache__/
 *.pyc
+
+# CMake
+/build/
+/build-*/
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+*.a
+*.lib
+build_log.txt
+clean_repo.bat
+clean_log.txt
+publish_github.bat
+publish_log.txt
+
+# Local-only: the 2026-09-16 code review, its patch and the throwaway
+# evaluator it shipped with. Its conclusions live in README.md and
+# KNOWN_ISSUES.md; the raw material is not part of the published repo.
+/review/
