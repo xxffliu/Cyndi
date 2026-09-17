@@ -66,12 +66,13 @@ class MMFF94 : public ForceField
              MMFF94(MOL& mol);
              // special constructor with a MOL and only specified energy terms are included
              MMFF94(MOL& mol, vector<MMFF94COMPONENT> energy_terms_list);
-             // copy constructor
-             MMFF94(const MMFF94& mmff94);
+             // v4 (2026): deleted -- the base ForceField copy shallow-copied the
+             // component pointers that both copies then deleted (double free).
+             // See the comment on ForceField's deleted copy operations.
+             MMFF94(const MMFF94& mmff94) = delete;
+             const MMFF94& operator=(const MMFF94& mmff94) = delete;
              // destructor
              virtual ~MMFF94();
-             // assessment operator
-             const MMFF94& operator=(const MMFF94& mmff94);
              // clear method
              virtual void clear();
 			 //bool extract_BS_parameters(FFParameter& ffp);

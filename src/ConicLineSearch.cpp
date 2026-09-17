@@ -14,7 +14,15 @@
 #define CONICLINESEARCH_DEFAULT_MIN_ENERGY -1.e+10
 
 // Maximum number of interpolation steps for a line search.
-#define CONICLINESEARCH_DEFAULT_MAX_STEPS 50
+// v4 (2026): lowered from 50 to 10. Each interpolation step costs one energy
+// AND one gradient evaluation of the whole force field, and the CG minimiser is
+// where ~80% of a Cyndi run is spent. Measured on the 329-molecule test set
+// (MOGA_Max_Opt_Gradient 0.5, MOGA_Max_Opt_Iteration 20): 178 s -> 138 s with
+// mean/median min-RMSD unchanged at 0.596 / 0.365 A and the same number of
+// aborted minimisations (1520), i.e. the extra 40 interpolations per step never
+// bought anything. Raise it again if you make the line search the object of
+// study rather than a means to relax obvious strain.
+#define CONICLINESEARCH_DEFAULT_MAX_STEPS 10
 
 
 

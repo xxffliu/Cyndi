@@ -44,12 +44,13 @@ class TAFF : public ForceField{
              TAFF(MOL& mol);
              // special constructor with a MOL and only specified energy terms are included
              TAFF(MOL& mol, vector<TAFFCOMPONENT> energy_terms_list);
-             // copy constructor
-             TAFF(const TAFF& taff);
+             // v4 (2026): deleted -- the base ForceField copy shallow-copied the
+             // component pointers that both copies then deleted (double free).
+             // See the comment on ForceField's deleted copy operations.
+             TAFF(const TAFF& taff) = delete;
+             const TAFF& operator=(const TAFF& taff) = delete;
              // destructor
              virtual ~TAFF();
-             // assessment operator
-             const TAFF& operator=(const TAFF& taff);
              // clear method
              virtual void clear();
              

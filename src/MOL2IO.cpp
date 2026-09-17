@@ -508,6 +508,17 @@ bool MOL2IO::build_all_(MOL* mol){
 bool MOL2IO::write(const MOL& mol0){
 	MOL& mol = const_cast<MOL&>(mol0);
 	if(output_){
+		// v4 (2026): the atom section below leaves the stream in fixed notation
+		// with precision 4, and those flags persist to the NEXT molecule's
+		// comment header. So the first molecule written to a file printed its
+		// fitness/energy in the default format and every later one in fixed(4)
+		// -- which made the first molecule of each chunk differ from the same
+		// molecule in a whole-file run, breaking run_parallel.py's bit-identity.
+		// Reset the float format explicitly at the start of every record.
+		output_.unsetf(ios_base::floatfield);
+		output_.unsetf(ios_base::showpoint);
+		output_.precision(6);
+		output_.setf(ios_base::right, ios_base::adjustfield);
 		// output the file name, pharmacophore model name and creation time in comment part
 		time_t it = time(NULL);
 		string time(ctime(&it));		 
@@ -528,6 +539,13 @@ bool MOL2IO::write(const MOL& mol0){
 			name = "****";
 		output_<<name<<endl;
 		// write the num of atoms, bonds and substructures
+		// v4 (2026): the atom/bond section below leaves the stream left-adjusted,
+		// so this line inherited left adjustment for every molecule EXCEPT the
+		// first one written to a file. That made the counts line of the first
+		// molecule of each chunk differ from the same molecule in a whole-file
+		// run, which breaks the byte-identity that run_parallel.py relies on.
+		// Set the adjustfield explicitly instead of inheriting it.
+		output_.setf(ios_base::right, ios_base::adjustfield);
 		output_<<setw(5)<<mol.get_num_atom()<<" "<<
 			setw(5)<<mol.get_num_bond()<<setw(5)<<" "<<
 			setw(5)<<mol.get_num_fragment()<<endl;

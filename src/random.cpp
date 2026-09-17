@@ -1,5 +1,11 @@
 #include "../include/random.h"
 
+// v4 (2026): the single definition of the generator state, declared extern in
+// random.h (it used to be 'static' there, i.e. one private copy per .cpp).
+double oldrand[55];
+double rndx1 = 0.0, rndx2 = 0.0;
+int rndcalcflag = 0;
+
 static int jrand(0);                                    /*
 current random number */
 

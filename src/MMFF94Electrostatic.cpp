@@ -216,14 +216,16 @@ void MMFF94Ele::update_forces()
     // iterate all non bond pairs and update forces	
     for (vector<EleData>::size_type i = 0; i< Ele_data_holder_.size();++i)
 	{
-		vector3 force_1 = Ele_data_holder_[i].atom1->get_force(), force_2 = Ele_data_holder_[i].atom2->get_force();
-        vector3 direction(Ele_data_holder_[i].atom1->get_position() - Ele_data_holder_[i].atom2->get_position());
-        double distance = direction.length();
-        double inverse_distance = 1./distance;
-		//direction = direction / distance;
-        direction.normalize();
-        if (!isNearZero(distance))
+		vector3 direction(Ele_data_holder_[i].atom1->get_position() - Ele_data_holder_[i].atom2->get_position());
+		// v4 (2026): see MMFF94VDW::update_forces -- one sqrt instead of two,
+		// and skip degenerate pairs before doing any work.
+		const double distance = sqrt(direction.length_2());
+		if (isNearZero(distance))     // same threshold as before
+			continue;
+		const double inverse_distance = 1.0 / distance;
+		direction *= inverse_distance;
 		{
+			vector3 force_1 = Ele_data_holder_[i].atom1->get_force(), force_2 = Ele_data_holder_[i].atom2->get_force();
 			double Ele_factor = 332.0716 * Ele_data_holder_[i].atom1->get_mmff94_partial_charge() * Ele_data_holder_[i].atom2->get_mmff94_partial_charge() / ((distance + 0.05) * (distance + 0.05));
 			if(Ele_data_holder_[i].is_14_interaction)
 			{

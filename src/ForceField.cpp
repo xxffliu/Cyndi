@@ -14,50 +14,9 @@ ff_name_("Unassigned"),
 energy_(0.0),
 unassignedAtoms_(),
 component_(){}
-// copy constructor
-ForceField::ForceField(const ForceField& ff):
-mol_(ff.mol_),
-atom_vec_(ff.atom_vec_),
-bond_vec_(ff.bond_vec_),
-parameter_(ff.parameter_),
-valid_(ff.valid_),
-ff_name_(ff.ff_name_),
-energy_(ff.energy_)
-{
-	for (vector<FFComponent*>::size_type i = 0; i < ff.component_.size(); i++)
-	{
-		//FFComponent* temp(*ffciter);
-		component_.push_back((FFComponent*)ff.component_[i]);
-		//delete temp;
-	}
-}
-// assignment operator
-ForceField& ForceField::operator=(const ForceField& ff)
-{
-	if (&ff != this)
-	{
-		mol_ = ff.mol_;
-		atom_vec_.clear();
-		bond_vec_.clear();
-		atom_vec_ = ff.atom_vec_;
-		bond_vec_ = ff.bond_vec_;
-		parameter_ = ff.parameter_;
-		valid_ = ff.valid_;
-		ff_name_ = ff.ff_name_;
-		energy_ = ff.energy_;
-		for(vector<FFComponent*>::size_type i = 0; i< component_.size(); i++)
-			delete component_[i];
-		component_.clear();
-		for (vector<FFComponent*>::size_type i = 0; i < ff.component_.size(); i++)
-		{
-			//FFComponent* temp(*ffciter);
-			component_.push_back((FFComponent*)ff.component_[i]);
-			//delete temp;
-		}
-		return (*this);
-	}
-	return *this;
-}
+// v4 (2026): the copy constructor and assignment operator are deleted in the
+// header -- see the comment there. They used to shallow-copy component_ while
+// both objects deleted those pointers in their destructors.
 
 // clear method called by destructor
 
@@ -136,9 +95,11 @@ bool ForceField::setup(MOL& mol)
 				(*aiter)->add_neighbor_atom_list((*biter)->get_partner(*aiter));
 				i++;
 			}
-			(*aiter)->set_num_neighbor_bond(i);
-			(*aiter)->set_num_neighbor_atom(i);
 		}
+		// v4 (2026): these two were inside the bond loop, so they were called
+		// once per bond with intermediate counts. Same result, O(bonds) fewer calls.
+		(*aiter)->set_num_neighbor_bond(i);
+		(*aiter)->set_num_neighbor_atom(i);
 	}
 
 	bool success = false;
@@ -321,7 +282,10 @@ FFComponent* ForceField::get_component(const string& component_name) const
 
 void ForceField::add_unassigned_atom(ATOM* unassigned_atom_ptr)
 {
-	if(find(unassignedAtoms_.begin(), unassignedAtoms_.end(), unassigned_atom_ptr) != unassignedAtoms_.end())
+	// v4 (2026): the test was inverted (!= end()), so an atom was appended only
+	// when it was ALREADY in the list -- i.e. never. The list of atoms with
+	// unassigned force-field types was therefore always empty.
+	if(find(unassignedAtoms_.begin(), unassignedAtoms_.end(), unassigned_atom_ptr) == unassignedAtoms_.end())
 		unassignedAtoms_.push_back(unassigned_atom_ptr);
 	return;
 }

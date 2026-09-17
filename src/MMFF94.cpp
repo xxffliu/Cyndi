@@ -92,11 +92,7 @@ file_name_(DEFAULT_MMFF94_PARAM_FILE){
 		valid_ = false;
 	}
 }
-// copy constructor
-MMFF94::MMFF94(const MMFF94& mmff94):
-ForceField(mmff94),
-param_is_initialized_(mmff94.param_is_initialized_),
-file_name_(mmff94.file_name_){}
+// v4 (2026): copy constructor and assignment operator are deleted (see header).
 // destructor
 MMFF94::~MMFF94(){
 }
@@ -105,18 +101,6 @@ void MMFF94::clear(){
 	ForceField::clear();
 	file_name_ = DEFAULT_MMFF94_PARAM_FILE;
 	param_is_initialized_ = false;
-}
-
-// assignment operator
-const MMFF94& MMFF94::operator=(const MMFF94& mmff94)
-{
-	if (this != &mmff94)
-	{
-		ForceField::operator=(mmff94);
-		file_name_ = mmff94.file_name_;
-		param_is_initialized_ = mmff94.param_is_initialized_;
-	}
-	return *this;
 }
 
  bool MMFF94::specific_setup()

@@ -5,18 +5,16 @@
 #include <cstdlib>
 
  
-/* variables are declared static so that they cannot conflict 
-with names of   */ 
-/* other global variables in other files.  See K&R, p 80, for 
-scope of static */
-static double oldrand[55];                      /* Array of 55
-random numbers */
-//static int jrand;                                    /*
-//current random number */
-static double rndx1, rndx2;                       /* used with random
-normal deviate */
-static int rndcalcflag;                    /* used with random
-normal deviate */
+/* v4 (2026): these were declared 'static' in the header, which gives EVERY
+   translation unit that includes random.h its own private copy of the
+   generator state.  It works today only because randomize()/randomperc()/
+   advance_random() all live in random.cpp and therefore all touch random.cpp's
+   copy -- the moment any other file referenced oldrand it would be seeding a
+   different generator than the one it draws from.  Declare them extern here
+   and define them once in random.cpp. */
+extern double oldrand[55];                      /* Array of 55 random numbers */
+extern double rndx1, rndx2;                     /* used with random normal deviate */
+extern int rndcalcflag;                         /* used with random normal deviate */
 
 void advance_random(void);
 

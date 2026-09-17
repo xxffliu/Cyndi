@@ -300,14 +300,19 @@ void MMFF94VDW::update_forces()
     double gbuf = 0.12;
     for (vector<VDWData>::size_type i = 0; i != vdw_data_holder_.size();++i)
 	{
-		vector3 force_1 = vdw_data_holder_[i].atom1->get_force(), force_2 = vdw_data_holder_[i].atom2->get_force();
-        vector3 direction(vdw_data_holder_[i].atom1->get_position() - vdw_data_holder_[i].atom2->get_position());
-        double distance = direction.length();
-        //double distance_2 = direction.length_2();
-		direction.normalize();
-        //direction = direction.normalize();
-        if (!isNearZero(distance))
+		vector3 direction(vdw_data_holder_[i].atom1->get_position() - vdw_data_holder_[i].atom2->get_position());
+		// v4 (2026): length() followed by normalize() took the square root twice
+		// (normalize() calls length() again) plus three divisions, on the hottest
+		// loop in the program. One sqrt and one reciprocal multiply is enough.
+		// The near-zero test also moved ahead of the scaling, so degenerate pairs
+		// cost nothing instead of being normalised and then discarded.
+		const double distance = sqrt(direction.length_2());
+		if (isNearZero(distance))     // same threshold as before
+			continue;
+		const double inv_distance = 1.0 / distance;
+		direction *= inv_distance;
 		{
+			vector3 force_1 = vdw_data_holder_[i].atom1->get_force(), force_2 = vdw_data_holder_[i].atom2->get_force();
 			const double q = distance / vdw_data_holder_[i].value.R;
 	    	const double q_2 = q * q;
 	    	const double q6 = q_2 * q_2 * q_2;

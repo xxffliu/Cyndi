@@ -3,6 +3,10 @@
 // gradient method with  line search
 
 #include "../include/CGMinimizer.h"
+
+// v4 (2026): number of minimisations that gave up with a failed step
+// computation; reported once at the end of the run by main().
+long g_cg_aborted_count = 0;
 #include "../include/ConicLineSearch.h"
 //#include "LineSearch.h"
 //#include <BALL/COMMON/limits.h>
@@ -758,9 +762,12 @@
 			if ((!converged) && (stp < 0.))
 			{
 				// Nasty case: No convergence and the step computation failed.
-				// We must give up:-( 
-				//debug
-				cout<<"No convergence and the step computation failed"<<endl;
+				// We must give up:-(
+				// v4 (2026): this used to print one line per aborted minimisation,
+				// which on a large batch buries the actual per-molecule table in
+				// tens of thousands of identical lines (and costs real time on a
+				// Windows console). Count them and let main() report the total.
+				++g_cg_aborted_count;
 				aborted_ = true;
 
 				return false;

@@ -84,11 +84,7 @@ file_name_(DEFAULT_TAFF_PARAM_FILE)
 		valid_ = false;
 	}
 }
-// copy constructor
-TAFF::TAFF(const TAFF& taff):
-ForceField(taff),
-param_is_initialized_(taff.param_is_initialized_),
-file_name_(taff.file_name_){}
+// v4 (2026): copy constructor and assignment operator are deleted (see header).
 // destructor
 TAFF::~TAFF(){
 }
@@ -99,15 +95,6 @@ void TAFF::clear(){
 	param_is_initialized_ = false;
 }
 
-// assignment operator
-const TAFF& TAFF::operator=(const TAFF& taff){
-	if (this != &taff){
-		ForceField::operator=(taff);
-		file_name_ = taff.file_name_;
-		param_is_initialized_ = taff.param_is_initialized_;
-	}
-	return *this;
-}
 
 bool TAFF::specific_setup(){
 	// check whether the molecule is aasigned

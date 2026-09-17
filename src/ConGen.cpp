@@ -1,6 +1,11 @@
 #include "../include/ConGen.h"
+#include <set>
 
-individual::individual():cv(0), energy(0.0)
+// v4 (2026): gyration_radius was left uninitialised by the constructor (it is
+// read by execuateMOGA for every archive member) and cv was dropped by the
+// assignment operator, so an individual copied into the archive silently lost
+// its constraint-violation value.
+individual::individual():cv(0), energy(0.0), gyration_radius(0.0f)
 {
 	xreal.clear();
 	f.resize(4);
@@ -11,6 +16,7 @@ individual& individual::operator =(const individual &rhs)
 	xreal.assign(rhs.xreal.begin(),rhs.xreal.end());
 	f = rhs.f;
 	box = rhs.box;
+	cv = rhs.cv;
 	energy = rhs.energy;
 	gyration_radius = rhs.gyration_radius;
 	return *this;
@@ -90,9 +96,15 @@ void MOGA::clear()
 	mol_.clear();
 	input_pos_.clear();
 	taff_.clear();
+	// v4 (2026): mmff94_ (the DEFAULT force field) and div_archive were not
+	// cleared here, so a MOGA object reused for another molecule kept the
+	// previous molecule's MMFF94 setup and diversity archive.
+	mmff94_.clear();
 	N_of_x = 0;
+	archive_size = 0;
 	population.clear();
 	archive.clear();
+	div_archive.clear();
 }
 
 MOGA::~MOGA()
@@ -122,7 +134,15 @@ vector<Conformer> MOGA::execuateMOGA()
 	// requested, fall back to the original time-based seeding.
 	float eff_seed = MOGAParam_.BasicSeed_;
 	if(MOGAParam_.UseInputRandomSeed_)
-		eff_seed = MOGAParam_.BasicSeed_ + 0.001f * (float)mo_global_idx_;
+	{
+		// keep the seed strictly inside (0,1): the Knuth subtractive generator
+		// in random.cpp produces garbage (values ~1e10) for seeds >= 1, which
+		// happens for the 581st molecule onwards with BasicSeed_ = 0.42 and
+		// crashes the run. fmod keeps results identical for idx < (1-seed)/0.001.
+		double sd = fmod((double)MOGAParam_.BasicSeed_ + 0.001 * (double)mo_global_idx_, 1.0);
+		if (sd < 1e-6) sd += 1e-6;
+		eff_seed = (float)sd;
+	}
 	else
 		eff_seed = TimeRandomSeed();
 
@@ -175,26 +195,35 @@ vector<Conformer> MOGA::execuateMOGA()
 	for (int i = 0; i < archive_size; i++)
 	{
 		tmp.torsions = archive[i].xreal;
-		tmp.VDWEnergy = archive[i].f[0];
-		tmp.TorsionEnergy = archive[i].f[1];
+		tmp.VDWEnergy = archive[i].f[0];      // conformation-dependent energy (v1 layout)
+		tmp.TorsionEnergy = 0.0;
 		tmp.TotalEnergy = archive[i].energy;
-		tmp.rmsd = (nobj >= 3) ? archive[i].f[2] : 0.0;
-		//tmp.GyrationRdius = 1/archive[i].f[3];
-		tmp.GyrationRdius = (nobj >= 4) ? -archive[i].f[3] : 0.0;
+		tmp.rmsd = archive[i].f[1];
+		tmp.GyrationRdius = archive[i].gyration_radius;
 		arch.push_back(tmp);
 	}
 	for (int i = 0; i < (int)div_archive.size(); i++)
 	{
 		tmp.torsions = div_archive[i].xreal;
-		tmp.VDWEnergy = div_archive[i].f[0];
-		tmp.TorsionEnergy = div_archive[i].f[1];
+		tmp.VDWEnergy = div_archive[i].f[0];      // conformation-dependent energy (v1 layout)
+		tmp.TorsionEnergy = 0.0;
 		tmp.TotalEnergy = div_archive[i].energy;
-		tmp.rmsd = (nobj >= 3) ? div_archive[i].f[2] : 0.0;
-		tmp.GyrationRdius = (nobj >= 4) ? -div_archive[i].f[3] : 0.0;
+		tmp.rmsd = div_archive[i].f[1];
+		tmp.GyrationRdius = div_archive[i].gyration_radius;
 		arch.push_back(tmp);
 	}
 	mol_.reset();
-	arch.resize(OutNum);
+	// drop exact duplicates (same torsion vector) so downstream minimisation
+	// and clustering do not repeat identical work
+	{
+		std::set<vector<int> > seen;
+		vector<Conformer> uniq;
+		uniq.reserve(arch.size());
+		for (size_t k = 0; k < arch.size(); k++)
+			if (seen.insert(arch[k].torsions).second)
+				uniq.push_back(arch[k]);
+		arch.swap(uniq);
+	}
 	return arch;
 }
 
@@ -289,7 +318,7 @@ inline int wrap_torsion(int v)
 	return infimumx + r;
 }
 
-void MOGA::realcross(individual parent1, individual parent2)
+void MOGA::realcross(const individual& parent1, const individual& parent2)
 {
 	float betaq(0.), beta(0.), alpha(0.),expp(0.);
 	int y1(0), y2(0), yu(0), yl(0), chld1(0), chld2(0);
@@ -321,7 +350,7 @@ void MOGA::realcross(individual parent1, individual parent2)
 				else if (d <= -period/2) d += period;
 				// wrap back into [infimumx, supremumx] so the SBX bound terms
 				// (y1-yl) and (yu-y2) stay non-negative
-				par2 = wrap_torsion(par1 + d);
+				par2 = par1 + d;   // may lie outside [yl,yu]; children are wrapped below
 			}
 #endif
 			if (abs(par1 - par2) > 0)	// changed by Deb (31/10/01)
@@ -338,16 +367,15 @@ void MOGA::realcross(individual parent1, individual parent2)
 				}
 
 				/*Find beta value */
+#ifndef TORSION_LINEAR
+				// periodic variable: no bounds, use the unbounded SBX spread
+				beta = 1e30f;
+#else
 				if ((y1 - yl) > (yu - y2))
-				{
-					beta = 1 + (2 * (yu - y2) / (y2 - y1));
-					//printf("beta = %f\n",beta);
-				}
+					beta = 1 + (2.0f * (yu - y2) / (y2 - y1));
 				else
-				{
-					beta = 1 + (2 * (y1 - yl) / (y2 - y1));
-					//printf("beta = %f\n",beta);
-				}
+					beta = 1 + (2.0f * (y1 - yl) / (y2 - y1));
+#endif
 
 				/*Find alpha */
 				expp = MOGAParam_.n_distribution_c + 1.0;
@@ -384,8 +412,8 @@ void MOGA::realcross(individual parent1, individual parent2)
 				}
 
 				/*Generating two children */
-				chld1 = 0.5 * ((y1 + y2) - betaq * (y2 - y1));
-				chld2 = 0.5 * ((y1 + y2) + betaq * (y2 - y1));
+				chld1 = (int)floor(0.5 * ((y1 + y2) - betaq * (y2 - y1)) + 0.5);
+				chld2 = (int)floor(0.5 * ((y1 + y2) + betaq * (y2 - y1)) + 0.5);
 
 			}
 			else
@@ -438,21 +466,44 @@ void MOGA::real_mutate (individual * new_pop_ptr)
 			int yl = infimumx;
 			int yu = supremumx;
 
-			if (y > yl)
+			// v4 (2026): on the circle every grid point is equivalent, so there is
+			// no "at the lower bound" special case -- always use the polynomial
+			// operator and wrap the result.  Under TORSION_LINEAR keep the old
+			// guard (a variable sitting on the lower bound gets a uniform redraw).
+#ifdef TORSION_LINEAR
+			bool use_polynomial = (y > yl);
+#else
+			bool use_polynomial = true;
+#endif
+			if (use_polynomial)
 			{
 				/*Calculate delta */
-				double delta(0.);
-				if ((y - yl) < (yu - y))
-					delta = (y - yl) / (yu - yl);
-				else
-					delta = (yu - y) / (yu - yl);
+				// v4 (2026): FIX -- (y - yl), (yu - y) and (yu - yl) are all int, so
+				// this was integer division and delta was ALWAYS 0.  With delta == 0
+				// the branch below gave val == 1, deltaq == 0 and the gene never
+				// changed: polynomial mutation was dead code.  Deb's formulation
+				// uses delta1 for the lower half of the distribution and delta2 for
+				// the upper half, so keep them separate.
+				double delta1 = double(y - yl) / double(yu - yl);
+				double delta2 = double(yu - y) / double(yu - yl);
+#ifndef TORSION_LINEAR
+				// periodic variable: the [yl,yu] interval is a cut through a circle,
+				// not a real boundary, so do not shrink the step near its ends.
+				// delta == 1 makes xy == 0, which is Deb's UNBOUNDED polynomial
+				// mutation: deltaq = (2u)^(1/(eta+1)) - 1 on [-1,0] and
+				// 1 - (2(1-u))^(1/(eta+1)) on [0,1], symmetric about 0.
+				// (delta == 0 is the opposite limit -- sitting on the bound --
+				// where val == 1, deltaq == 0 and the gene never moves.)
+				delta1 = 1.0;
+				delta2 = 1.0;
+#endif
 				rnd = randomperc();
 
 				double indi = 1.0 / (MOGAParam_.n_distribution_m + 1.0);
 				double deltaq(0.);
 				if (rnd <= 0.5)
 				{
-					double xy = 1.0 - delta;
+					double xy = 1.0 - delta1;
 					// v1 (2026): was 'int val = ...' which truncated the polynomial
 					// mutation to 0/1 and destroyed the mutation distribution.
 					double val = 2 * rnd + (1 - 2 * rnd) * (std::pow(xy, double(MOGAParam_.n_distribution_m + 1)));
@@ -460,7 +511,7 @@ void MOGA::real_mutate (individual * new_pop_ptr)
 				}
 				else
 				{
-					double xy = 1.0 - delta;
+					double xy = 1.0 - delta2;
 					double val = 2.0 * (1.0 - rnd) + 2.0 * (rnd - 0.5) * (pow (xy, double(MOGAParam_.n_distribution_m + 1)));
 					deltaq = 1.0 - (pow (val, indi));
 				}
@@ -468,7 +519,7 @@ void MOGA::real_mutate (individual * new_pop_ptr)
 				/*Change the value for the parent */
 				//  *ptr  = *ptr + deltaq*(yu-yl);
 				// Added by Deb (31/10/01)
-				y = y + deltaq * (yu - yl);
+				y = y + (int)floor(deltaq * (yu - yl) + 0.5);
 				// v1 (2026): wrap onto the circle instead of clamping, so mutation
 				// can cross the +/-180 deg seam.
 #ifdef TORSION_LINEAR
@@ -607,6 +658,7 @@ int MOGA::update()
 				archive[j] = archive[j + 1];
 			}
 			archive_size--;
+			i--;   // the element shifted into slot i has not been examined yet
 		}
 	}
 	//modified by xfliu on 20080507
@@ -639,7 +691,7 @@ int MOGA::update()
 				}
 				archive_size--;
 				d = 1;
-				i = 0;
+				i = -1;   // restart the scan from slot 0 (loop increment makes it 0)
 			}
 		}
 		if (d == 1)
@@ -739,7 +791,7 @@ int MOGA::con_update ()
 		// v2 (2026): a child rejected by the epsilon archive (dominated or
 		// crowded out of its box) may still widen the Pareto front -- offer it
 		// to the diversity archive (maximin update).
-		if (flg < 0)
+		if (flg < 0 && newchild.energy <= Ecutoff_)
 			update_diversity_archive (newchild);
 	}
 	else
@@ -783,7 +835,7 @@ int MOGA::con_update ()
 
 // Finds the distance between corner[] and between the decision variable
 // coordinates of the individual
-double MOGA::distance (individual ind1, vector<double>point)
+double MOGA::distance (const individual& ind1, const vector<double>& point)
 {
 	double dist = 0.0;
 	for (int i = 0; i < MOGAParam_.NumObjects_; i++)
@@ -797,7 +849,7 @@ double MOGA::distance (individual ind1, vector<double>point)
 // v2 (2026): objective-space distance normalised by the epsilon grid. Each
 // objective is divided by its grid size so the crowding metric is
 // dimensionless and no objective dominates the distance by unit scale.
-double MOGA::obj_distance (individual ind1, individual ind2)
+double MOGA::obj_distance (const individual& ind1, const individual& ind2)
 {
 	double dist = 0.0;
 	for (int i = 0; i < MOGAParam_.NumObjects_; i++)
@@ -814,7 +866,7 @@ double MOGA::obj_distance (individual ind1, individual ind2)
 // v2 (2026): distance from ind to its nearest neighbour in arch, excluding the
 // member at index skip_idx (used so an archive member does not count itself).
 // Returns a large value when there is no other member.
-double MOGA::min_archive_distance (individual ind, vector<individual>& arch, int arch_size, int skip_idx)
+double MOGA::min_archive_distance (const individual& ind, const vector<individual>& arch, int arch_size, int skip_idx)
 {
 	double best = 1e30;
 	for (int i = 0; i < arch_size; i++)
@@ -851,6 +903,11 @@ void MOGA::update_diversity_archive (individual& ind)
 		}
 	}
 	double ind_min = min_archive_distance (ind, div_archive, (int)div_archive.size(), -1);
+	if (ind_min < 1e-9)   // exact duplicate in objective space -> nothing new
+		return;
+	for (int i = 0; i < (int)div_archive.size(); i++)
+		if (div_archive[i].xreal == ind.xreal)
+			return;
 	if (div_archive.size () < MAX_ARCHIVE_SIZE)
 	{
 		div_archive.push_back (ind);
@@ -873,7 +930,7 @@ void MOGA::update_diversity_archive (individual& ind)
 }
 
 // Check for domination (usual sense)
-int MOGA::dom_check (individual ind1, individual ind2)
+int MOGA::dom_check (const individual& ind1, const individual& ind2)
 {
 	int flag = 1;
 	int elag = 0;
@@ -894,7 +951,7 @@ int MOGA::dom_check (individual ind1, individual ind2)
 }
 
 //to check whether 2 individuals are in the same box or not
-int MOGA::same_box_check (individual ind1, individual ind2)
+int MOGA::same_box_check (const individual& ind1, const individual& ind2)
 {
 	int flag = 1;
 	for (int i = 0; i < MOGAParam_.NumObjects_; i++)
@@ -913,7 +970,7 @@ int MOGA::same_box_check (individual ind1, individual ind2)
 }
 
 // function to check for Box domination
-int MOGA::box_dom (individual ind1, individual ind2)
+int MOGA::box_dom (const individual& ind1, const individual& ind2)
 {
 	int flag = 1;
 	int elag = 0;

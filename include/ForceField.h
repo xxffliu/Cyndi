@@ -32,11 +32,17 @@ class ForceField{
              // constructors and destructor
              ForceField();
              ForceField(MOL& mol);
-             ForceField(const ForceField& ff);
              virtual ~ForceField();
              virtual void clear();
-             // assignment operation
-             ForceField& operator=(const ForceField& ff);
+             // v4 (2026): copying a ForceField used to copy component_ as raw
+             // pointers while every copy's destructor deleted them, so any copy
+             // was a double free waiting to happen (and the copy silently shared
+             // components that still pointed at the ORIGINAL force field). No
+             // code copies a force field today; make that a compile error rather
+             // than a latent crash. Restoring copying means giving FFComponent a
+             // virtual clone() and re-binding each clone to the new owner.
+             ForceField(const ForceField& ff) = delete;
+             ForceField& operator=(const ForceField& ff) = delete;
              // debug
              bool isValid() const;
              

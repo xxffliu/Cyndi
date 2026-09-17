@@ -115,6 +115,19 @@ bool FFParameter::initialize_atom_type(){
 // parse each line of parameters in the parameter file into the map
 // using the component name as the key
 void FFParameter::read_parameter(const string& file_name){
+     // v4 (2026): MMFF94.parm is 260 KB and is re-read and re-tokenised every
+     // time a force field is set up -- two or three times per molecule, so
+     // ~1000 full parses over the 329-molecule set. The files never change
+     // during a run, so parse each one once and serve later calls from a cache.
+     typedef map<string, vector<vector<string> > > SectionMap;
+     static map<string, SectionMap> s_parsed_cache;
+     map<string, SectionMap>::const_iterator cached = s_parsed_cache.find(file_name);
+     if (cached != s_parsed_cache.end()){
+         params_in_each_section = cached->second;
+         if (initialize_atom_type())
+             is_initialized_ = true;
+         return;
+         }
      params_in_each_section.clear();
      ifstream fin(file_name.c_str());
      if(!fin){
@@ -147,6 +160,7 @@ void FFParameter::read_parameter(const string& file_name){
                 first_time_reading = true;
                 }
      }
+     s_parsed_cache[file_name] = params_in_each_section;
      if (initialize_atom_type())
          is_initialized_ = true;
      //cout<<params_in_each_section["bond"].size()<<" "<<params_in_each_section["angle"].size()

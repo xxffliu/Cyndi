@@ -263,15 +263,23 @@ FRAGVec& MOL::get_fragment_vector(){
 }
 
 double MOL::updateRMSD(){
-	double rmsd = 0.0;
+	// v4 (2026): this summed squared displacements over HEAVY atoms only but
+	// divided by num_atom (heavy + hydrogens) and never took the square root,
+	// so it returned neither an RMSD nor a consistent mean square deviation.
+	// Nothing calls it today -- minimizeRMSD() is what the MOGA objective and
+	// the clustering use -- but leaving a mis-named trap in the API is worse
+	// than fixing it.
+	double sq_sum = 0.0;
+	int num_heavy_atom = 0;
 	for (ATOMVec::iterator aiter = _vatom.begin(); aiter != _vatom.end(); ++aiter){
 		if((*aiter)->is_hydrogen())
 			continue;
 		vector3 v = (*aiter)->get_position();
 		vector3 u = (*aiter)->get_orig_position();
-		rmsd += (v-u).length_2();
+		sq_sum += (v-u).length_2();
+		num_heavy_atom += 1;
 	}
-	rmsd_ = rmsd/num_atom;
+	rmsd_ = (num_heavy_atom > 0) ? sqrt(sq_sum / num_heavy_atom) : 0.0;
 	return rmsd_;
 }
 

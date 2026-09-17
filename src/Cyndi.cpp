@@ -57,11 +57,28 @@ int RemoveRedundantConf(deque<MOL>& confvec, int num_rot)
 
 void execuateCONGEN()
 {
-	cout<<"Name"<<setw(8)<<"Rot Bonds"<<setw(24)<<"Confs(before filtered)"<<setw(24)<<"Confs(after filtered)"<<setw(8)<<"time(s)"<<endl;
+	// v4 (2026): the old widths glued the last two columns together (setw(8) is
+	// narrower than a printed time such as "0.144822", so "10" + "0.144822"
+	// came out as "100.144822").  Left-align the name, give every numeric
+	// column its own width, and keep header and data rows in lock-step.
+	cout<<left<<setw(16)<<"Name"<<right
+	    <<setw(10)<<"RotBonds"
+	    <<setw(14)<<"Confs(raw)"
+	    <<setw(14)<<"Confs(kept)"
+	    <<setw(12)<<"time(s)"<<endl;
 	MOL mol_, tmpmol;
 	TAFF MOGATaff;
 	MMFF94 MOGAmmff94;
 	CGMinimizer cgm;
+	// v4 (2026): MOGAParam_.MaxGrd_ (MOGA_Max_Opt_Gradient in the parameter
+	// file) was parsed but never handed to the minimiser, so every conformer
+	// was minimised against the built-in default MAX_GRADIENT of 0.01
+	// kJ/(mol A) -- a tolerance the CG optimiser essentially never reaches, so
+	// every conformer ran the full MOGA_Max_Opt_Iteration budget.  Build the
+	// option struct once and pass it to every cgm.setup() below.
+	EnergyMinimizer::MIN_OPTION cg_option;
+	cg_option.MAX_GRADIENT = MOGAParam_.MaxGrd_;
+	cg_option.MAXIMAL_NUMBER_OF_ITERATIONS = MOGAParam_.MaxNumIteration_;
 	string MolFile = MOGAParam_.InputFile_;
 	vector<MOL> FailedVector;
 	// herer we want to discard the delimiter such as "/" and ".", so we only take the substring between the last
@@ -91,6 +108,8 @@ void execuateCONGEN()
 		if(MOGAParam_.MaxMolecules_ > 0 && Counter >= MOGAParam_.MaxMolecules_)
 			break;
 		Counter += 1;
+		int ThisIdx = GlobalIdx;   // index of THIS molecule
+		GlobalIdx += 1;            // advance now, so every 'continue' path below also counts
 		mol_.initialize();
 		string name = mol_.get_name();
 		int NumConfBelowCutoff = 0;
@@ -106,7 +125,7 @@ void execuateCONGEN()
 			if(MOGAParam_.FFType_ == FF_TAFF)
 			{
 				MOGATaff.setup(mol_);
-				cgm.setup(MOGATaff);
+				cgm.setup(MOGATaff, cg_option);
 				cgm.minimize(MOGAParam_.MaxNumIteration_);
 				MOGATaff.update_energy();
 			}
@@ -114,7 +133,7 @@ void execuateCONGEN()
 			{
 				MOGAmmff94.setup(mol_);
 				//MOGAmmff94.remove_component("MMFF94 Str_Bend");
-				cgm.setup(MOGAmmff94);
+				cgm.setup(MOGAmmff94, cg_option);
 				cgm.minimize(MOGAParam_.MaxNumIteration_);
 				MOGAmmff94.update_energy();
 			}
@@ -146,7 +165,7 @@ void execuateCONGEN()
 		// v3 (2026): tell the MOGA which global molecule index this is, so its
 		// RNG seed = BasicSeed_ + 0.001 * GlobalIdx -- deterministic per
 		// molecule and identical whether run solo or as a batch chunk.
-		congen.set_global_idx(GlobalIdx);
+		congen.set_global_idx(ThisIdx);
 			bool success = congen.setup(mol_);
 			if(!success)
 			{
@@ -180,12 +199,12 @@ void execuateCONGEN()
 				if(MOGAParam_.FFType_ == FF_TAFF)
 				{
 					MOGATaff.setup(mol_);
-					cgm.setup(MOGATaff);
+					cgm.setup(MOGATaff, cg_option);
 				}
 				else
 				{
 					MOGAmmff94.setup(mol_);
-					cgm.setup(MOGAmmff94);
+					cgm.setup(MOGAmmff94, cg_option);
 				}
 			}
 
@@ -249,7 +268,11 @@ void execuateCONGEN()
 			}*/
 			//cout<<"Done."<<endl<<num_conf<<" conformers generated."<<endl;
 			//cout<<"Cyndi reserved "<<NumConfBelowCutoff<<" conformers because of energy cutoff"<<endl;
-			cout<<name<<setw(8)<<mol_.get_num_of_rot_bonds()<<setw(24)<<num_conf<<setw(24)<<NumConfBelowCutoff<<setw(8)<<ElapseTime<<endl;
+			cout<<left<<setw(16)<<name<<right
+			    <<setw(10)<<mol_.get_num_of_rot_bonds()
+			    <<setw(14)<<num_conf
+			    <<setw(14)<<NumConfBelowCutoff
+			    <<setw(12)<<ElapseTime<<endl;
 		}
 		//debug
 		//cout<<"VDW Energy"<<setw(16)<<"Torsion Energy"<<setw(16)<<"Total Energy"<<setw(16)<<"Rmsd"<<setw(16)<<"GyrationRadius"<<endl;
@@ -271,7 +294,6 @@ void execuateCONGEN()
 				conf.pop();
 			}
 		}
-		GlobalIdx += 1;   // v3 (2026): advance the global index for the next molecule
 	}
 	if(!FailedVector.empty())
 	{
@@ -281,6 +303,13 @@ void execuateCONGEN()
 	}
 	cout<<"Number of Molecules Processed: "<<Counter<<endl;
 	cout<<"Number of Molecules Failed: "<<failCounter<<endl;
+	// v4 (2026): summary instead of one console line per aborted minimisation
+	{
+		extern long g_cg_aborted_count;
+		if(g_cg_aborted_count > 0)
+			cout<<"CG minimisations aborted (step computation failed): "
+			    <<g_cg_aborted_count<<endl;
+	}
 	mol_.clear();
 	tmpmol.clear();
 	return;

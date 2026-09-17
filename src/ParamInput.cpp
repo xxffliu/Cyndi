@@ -60,7 +60,7 @@ bool ReadParameter(string name)
 			else if (fields[0] == "MOGA_SBX")
 			{
 				MOGAParam_.n_distribution_c = str2double(fields[1]);
-				MOGAParam_.n_distribution_m = str2double(fields[1]);
+				MOGAParam_.n_distribution_m = (fields.size() > 2) ? str2double(fields[2]) : str2double(fields[1]);
 			}
 
 			else if(fields[0] == "MOGA_VDW_Energy_Epsilon")
@@ -94,12 +94,14 @@ bool ReadParameter(string name)
 				else
 					MOGAParam_.FFType_ = FF_TAFF;
 
-			else if(fields[0] == "MOGA_Optimize_Input_Conformer[Y]/N]")
-
-				if(fields[1] == "Y" ||fields[1] == "y" || fields[1] == "yes")
-					MOGAParam_.OptimizeInputConformer_ = true;
-				else
-					MOGAParam_.OptimizeInputConformer_ = false;
+			// v4 (2026): the key carried a typo (an extra ']' after the Y), so a
+			// parameter file spelled the obvious way never matched. Accept both.
+			else if(fields[0] == "MOGA_Optimize_Input_Conformer[Y/N]" ||
+			        fields[0] == "MOGA_Optimize_Input_Conformer[Y]/N]")
+			{
+				MOGAParam_.OptimizeInputConformer_ =
+					(fields[1] == "Y" || fields[1] == "y" || fields[1] == "yes");
+			}
 
 
 
@@ -113,19 +115,33 @@ bool ReadParameter(string name)
 			else if (fields[0] == "MOGA_Max_Opt_Iteration")
 				MOGAParam_.MaxNumIteration_ = str2int(fields[1]);
 
+			// v4 (2026): this used to be parsed only when MOGA_Optimize_Conformer
+			// had already been seen EARLIER in the file, so the value silently
+			// depended on line order. Always store it; whether minimisation runs
+			// at all is decided by OptimizeConformer_ at use time.
 			else if (fields[0] == "MOGA_Max_Opt_Gradient")
-				if(MOGAParam_.OptimizeConformer_)
-					MOGAParam_.MaxGrd_ = str2double(fields[1]);
-				else
-					continue;
+				MOGAParam_.MaxGrd_ = str2double(fields[1]);
 			else if(fields[0] == "MOGA_Energy_Cutoff")
 				MOGAParam_.EnergyCutoff_ = str2double(fields[1]);
 
 			else if(fields[0] == "MOGA_RMSD_Scale_Factor")
 				MOGAParam_.rmsdScaleFactor_ = str2double(fields[1]);
 
+			// v4 (2026): MOGA_Split_Output is accepted by the parameter files that
+			// ship with Cyndi but has never been implemented; say so rather than
+			// letting the user believe it does something.
+			else if(fields[0] == "MOGA_Split_Output[Y/N]" || fields[0] == "MOGA_Split_Output")
+			{
+				if(fields[1] == "Y" || fields[1] == "y" || fields[1] == "yes")
+					cout<<"Warning: MOGA_Split_Output is not implemented; ignoring."<<endl;
+			}
 			else
+			{
+				// v4 (2026): unknown keys were dropped in silence, which is how the
+				// MOGA_Optimize_Input_Conformer typo above survived. Report them.
+				cout<<"Warning: unknown parameter key '"<<fields[0]<<"' ignored."<<endl;
 				continue;
+			}
 		}
 	}
 	return true;
